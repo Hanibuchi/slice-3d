@@ -9,7 +9,7 @@ description = "3Dモデルを一定間隔でスライスして断面(輪郭)を�
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
-authors = [{ name = "hanibuchi" }]
+authors = [{ name = "hanibuchi", email = "hanitech8686@gmail.com" }]
 keywords = ["3d", "mesh", "slicing", "cross-section", "trimesh", "cad", "stl"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -21,6 +21,8 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Multimedia :: Graphics :: 3D Modeling",
     "Topic :: Scientific/Engineering",
 ]
@@ -47,8 +49,8 @@ slice3d = "slice3d.cli:main"
 slice3d-gui = "slice3d.gui:main"
 
 [project.urls]
-Homepage = "https://github.com/hanibuchi/slice3d"
-Issues = "https://github.com/hanibuchi/slice3d/issues"
+Homepage = "https://github.com/Hanibuchi/slice-3d"
+Issues = "https://github.com/Hanibuchi/slice-3d/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/slice3d"]
