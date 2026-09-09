@@ -1,6 +1,10 @@
+from pathlib import Path
+
 import trimesh
 
 import slice3d
+
+AMMONITE_PATH = Path(__file__).parent.parent / "examples" / "ammonite.glb"
 
 
 def make_sphere():
@@ -61,3 +65,35 @@ def test_save_section_infers_format_from_extension(tmp_path):
     assert result == outpath
     assert outpath.exists()
     assert outpath.read_text().startswith("polyline_id,x,y")
+
+
+def test_polylines_includes_open_curves_on_nonwatertight_mesh():
+    """非watertightなメッシュでは、断面が閉じたループにならない(開いた線になる)
+    位置がありうる。path.discrete はそれを取りこぼすが、polylines() は拾えることを
+    確認する(実際にammonite.glbのy=0.15〜0.22付近で発生していた欠落の回帰テスト)。
+    """
+    mesh = slice3d.load_mesh(AMMONITE_PATH)
+    assert not mesh.is_watertight
+
+    origin = mesh.bounds[0].copy()
+    origin[1] = 0.18
+    section = mesh.section(plane_origin=origin, plane_normal=[0, 1, 0])
+
+    assert section is not None
+    assert len(section.discrete) == 0, "既知の制約: 開いた断面は discrete では拾えない"
+
+    lines = slice3d.polylines(section)
+    assert lines
+    assert sum(len(p) for p in lines) > 0
+
+
+def test_slice_file_png_covers_open_curve_region(tmp_path):
+    """y=0.15〜0.22付近(閉じていない断面)を含む範囲でも、PNG出力が
+    空になってしまわないことを確認する。"""
+    written = slice3d.slice_file(
+        AMMONITE_PATH, tmp_path, axis="y", thickness=0.01, start=0.17, end=0.19, fmt="png"
+    )
+
+    assert written
+    for p in written:
+        assert p.stat().st_size > 0

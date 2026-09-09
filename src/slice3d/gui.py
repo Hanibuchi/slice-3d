@@ -124,6 +124,10 @@ class SliceViewer:
 
         path_2d は2D平面上のPath2D(交差なしならNone)、discrete_3d は
         3Dプレビュー用のポリライン(Nx3配列)のリスト。
+
+        polylines()(core.pyのentityベースの抽出)を使うことで、非watertightな
+        メッシュの断面のように閉じていない(開いた)線も欠落なく拾う。
+        ``section.discrete`` は閉じたループしか返さないため使わない。
         """
         axis_idx = core.AXES[self.axis]
         normal = [0.0, 0.0, 0.0]
@@ -134,7 +138,7 @@ class SliceViewer:
         if section is None:
             return None, []
         path_2d, _transform = section.to_2D()
-        return path_2d, section.discrete
+        return path_2d, core.polylines(section)
 
     def _plane_corners(self, index: int) -> np.ndarray:
         axis_idx = core.AXES[self.axis]
@@ -307,7 +311,7 @@ class SliceViewer:
         b = self.mesh.bounds
         self.ax_section.set_xlim(b[0, other[0]], b[1, other[0]])
         self.ax_section.set_ylim(b[0, other[1]], b[1, other[1]])
-        if path_2d is None:
+        if not discrete_3d:
             self.ax_section.text(
                 0.5, 0.5, "No intersection", ha="center", va="center", transform=self.ax_section.transAxes
             )

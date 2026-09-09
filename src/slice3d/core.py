@@ -19,6 +19,7 @@ __all__ = [
     "save_section",
     "slice_file",
     "print_volume",
+    "polylines",
 ]
 
 AXES = {"x": 0, "y": 1, "z": 2}
@@ -113,6 +114,17 @@ def slice_mesh(
     return list(iter_slices(mesh, axis=axis, thickness=thickness, start=start, end=end))
 
 
+def polylines(path) -> list[np.ndarray]:
+    """Path2D/Path3D の全エンティティを点列(Nx2 または Nx3 配列)のリストとして取り出す。
+
+    ``path.discrete`` は閉じたループしか返さないため、非watertightなメッシュの
+    断面のように閉じていない(開いた)線が含まれていると取りこぼしてしまう。
+    この関数は entity 単位で ``entity.discrete(path.vertices)`` を呼ぶことで、
+    開いた線も含めてすべての線分を取得する。
+    """
+    return [entity.discrete(path.vertices) for entity in path.entities]
+
+
 def save_section(path_2d: "trimesh.path.Path2D", outpath: str | Path, fmt: str | None = None) -> Path:
     """1枚の断面 (Path2D) をファイルへ保存する。
 
@@ -131,7 +143,7 @@ def save_section(path_2d: "trimesh.path.Path2D", outpath: str | Path, fmt: str |
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots()
-        for polyline in path_2d.discrete:
+        for polyline in polylines(path_2d):
             ax.plot(polyline[:, 0], polyline[:, 1], "-k")
         ax.set_aspect("equal")
         ax.axis("off")
@@ -139,7 +151,7 @@ def save_section(path_2d: "trimesh.path.Path2D", outpath: str | Path, fmt: str |
         plt.close(fig)
     elif fmt == "csv":
         lines = ["polyline_id,x,y"]
-        for i, polyline in enumerate(path_2d.discrete):
+        for i, polyline in enumerate(polylines(path_2d)):
             for x, y in polyline:
                 lines.append(f"{i},{x},{y}")
         outpath.write_text("\n".join(lines))

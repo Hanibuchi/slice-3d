@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -6,6 +8,8 @@ import pytest
 import trimesh
 
 from slice3d.gui import SliceViewer
+
+AMMONITE_PATH = Path(__file__).parent.parent / "examples" / "ammonite.glb"
 
 
 def make_sphere_file(tmp_path):
@@ -88,6 +92,20 @@ def test_viewer_section_uses_world_coordinates(tmp_path):
     # axis="x" のとき、断面図の横軸はワールドのy座標に対応する。
     assert plotted_x.min() == pytest.approx(discrete_3d[0][:, 1].min())
     assert plotted_x.max() == pytest.approx(discrete_3d[0][:, 1].max())
+
+
+def test_viewer_shows_open_cross_section():
+    """ammonite.glb の y=0.15〜0.22付近は非watertightで断面が閉じたループに
+    ならないため、以前は3Dハイライトには見えるのに断面図には何も描かれない
+    (discrete_3d が空になる)不具合があった。その回帰テスト。"""
+    viewer = SliceViewer(AMMONITE_PATH, axis="y", thickness=0.01)
+
+    index = int(round((0.18 - viewer.heights[0]) / viewer.thickness))
+    viewer.slider.set_val(index)
+
+    _path_2d, discrete_3d = viewer._section_at(index)
+    assert discrete_3d, "y=0.18付近の断面が空になっています(開いた線の欠落)"
+    assert len(viewer.ax_section.get_lines()) > 0
 
 
 def test_viewer_save_writes_file(tmp_path):
