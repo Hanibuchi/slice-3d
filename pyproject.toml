@@ -34,8 +34,10 @@ dependencies = [
 
 [project.optional-dependencies]
 viz = ["matplotlib>=3.7"]
-gui = ["matplotlib>=3.7", "fast-simplification>=0.1.7"]
-dev = ["pytest>=7.0", "matplotlib>=3.7", "fast-simplification>=0.1.7"]
+# gui.py は RadioButtons/Slider の radio_props・label_props・handle_style
+# (ウィジェットのクリック領域拡大に使用) に依存するため matplotlib>=3.8 が必要。
+gui = ["matplotlib>=3.8", "fast-simplification>=0.1.7"]
+dev = ["pytest>=7.0", "matplotlib>=3.8", "fast-simplification>=0.1.7"]
 
 [project.scripts]
 slice3d = "slice3d.cli:main"

@@ -180,21 +180,36 @@ class SliceViewer:
             0.03, 0.905, "Full model (red = current slice plane)", fontsize=10, va="top"
         )
 
-        ax_radio = self.fig.add_axes((0.015, 0.08, 0.09, 0.15))
-        ax_radio.set_title("Axis", fontsize=9)
-        self.radio = RadioButtons(ax_radio, ("x", "y", "z"), active="xyz".index(self.axis))
+        # ラジオボタンは既定だと丸のサイズ・クリック領域が小さく押しづらいため、
+        # 専用エリアを広めに取った上で radio_props/label_props でマーカーと
+        # フォントを拡大している。
+        ax_radio = self.fig.add_axes((0.01, 0.02, 0.13, 0.24))
+        ax_radio.set_title("Axis", fontsize=11)
+        self.radio = RadioButtons(
+            ax_radio,
+            ("x", "y", "z"),
+            active="xyz".index(self.axis),
+            radio_props={"s": 160},
+            label_props={"fontsize": [14, 14, 14]},
+        )
         self.radio.on_clicked(self._on_axis_change)
 
         thickness_label = f"Thickness ({self.units})  " if self.units else "Thickness  "
-        ax_thickness = self.fig.add_axes((0.28, 0.1, 0.18, 0.05))
+        ax_thickness = self.fig.add_axes((0.28, 0.09, 0.18, 0.07))
         self.thickness_box = TextBox(ax_thickness, thickness_label, initial=f"{self.thickness:g}")
+        self.thickness_box.text_disp.set_fontsize(12)
+        self.thickness_box.label.set_fontsize(11)
         self.thickness_box.on_submit(self._on_thickness_submit)
 
-        ax_save = self.fig.add_axes((0.62, 0.1, 0.26, 0.05))
+        ax_save = self.fig.add_axes((0.62, 0.09, 0.26, 0.07))
         self.save_button = Button(ax_save, "Save Slice (SVG)")
+        self.save_button.label.set_fontsize(11)
         self.save_button.on_clicked(self._on_save)
 
-        self.ax_slider = self.fig.add_axes((0.14, 0.2, 0.76, 0.05))
+        self.ax_slider = self.fig.add_axes((0.19, 0.2, 0.71, 0.05))
+        # スライダーのつまみも既定サイズだと掴みづらいので大きくする
+        # (トラック自体はどこをクリックしてもその位置へ移動できる)。
+        self._slider_handle_style = {"size": 18}
 
     def _preview_mesh(self):
         """3D表示専用の軽量化されたメッシュを返す(スライス計算には使わない)。"""
@@ -251,7 +266,16 @@ class SliceViewer:
         n = len(self.heights)
         current = 0 if self.slider is None else min(int(self.slider.val), n - 1)
         self.ax_slider.clear()
-        self.slider = Slider(self.ax_slider, "slice", 0, max(n - 1, 0), valinit=current, valstep=1)
+        self.slider = Slider(
+            self.ax_slider,
+            "slice",
+            0,
+            max(n - 1, 0),
+            valinit=current,
+            valstep=1,
+            handle_style=self._slider_handle_style,
+        )
+        self.slider.label.set_fontsize(11)
         self.slider.on_changed(lambda val: self._show_index(int(val)))
         self._show_index(current)
 
