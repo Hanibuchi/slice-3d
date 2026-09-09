@@ -7,6 +7,8 @@
 
     slice3d-gui model.stl
     slice3d-gui model.stl --axis x --pitch 0.01
+    slice3d-gui model.glb              # glTF/GLBは仕様上メートル単位なので自動で"m"表示
+    slice3d-gui model.stl --units mm   # STLなど単位不明な形式は明示的に指定
 
 matplotlib が必要 (``pip install "slice3d[gui]"``)。
 """
@@ -47,6 +49,14 @@ plt.rcParams["axes.unicode_minus"] = False
 # (スライス計算自体は元メッシュの精度で行われ、この簡略化は3D表示にのみ影響する)
 _MAX_PREVIEW_FACES = 4_000
 
+# glTF/GLBは仕様上メートル単位と定められているため、既定値として表示に使う。
+# STL/OBJ/PLYなどは単位の情報を持たないファイル形式なので、既定は単位なし(空文字)。
+_UNITS_BY_EXTENSION = {".glb": "m", ".gltf": "m"}
+
+
+def _default_units(model_path: Path) -> str:
+    return _UNITS_BY_EXTENSION.get(model_path.suffix.lower(), "")
+
 
 class SliceViewer:
     """3D表示 + スライダーで断面を切り替えながら確認するmatplotlibウィンドウ。"""
@@ -57,12 +67,14 @@ class SliceViewer:
         axis: str = "z",
         pitch: float | None = None,
         max_preview_faces: int = _MAX_PREVIEW_FACES,
+        units: str | None = None,
     ):
         self.model_path = Path(model_path)
         self.mesh = core.load_mesh(self.model_path)
         self.axis = axis
         self.volume = float(self.mesh.volume)
         self.max_preview_faces = max_preview_faces
+        self.units = _default_units(self.model_path) if units is None else units
 
         if pitch is None:
             extent = self.mesh.extents[core.AXES[axis]]
@@ -76,6 +88,15 @@ class SliceViewer:
 
         self._build_ui()
         self._recompute_slices()
+
+    # ---- 表示用フォーマット ----
+    def _fmt_length(self, value: float) -> str:
+        suffix = f" {self.units}" if self.units else ""
+        return f"{value:.6g}{suffix}"
+
+    def _fmt_volume(self, value: float) -> str:
+        suffix = f" {self.units}³" if self.units else ""
+        return f"{value:.6g}{suffix}"
 
     # ---- データ ----
     def _recompute_slices(self) -> None:
@@ -126,30 +147,31 @@ class SliceViewer:
 
         self.ax_section = self.fig.add_axes((0.55, 0.28, 0.43, 0.58))
         self.ax_section.set_aspect("equal")
-        self.ax_section.set_title("断面(この平面を真上から見た形)", fontsize=10)
+        self.ax_section.set_title("Cross-section (view along slicing axis)", fontsize=10)
 
-        watertight_note = "" if self.mesh.is_watertight else "  (non-watertight: 近似値)"
+        watertight_note = "" if self.mesh.is_watertight else "  (non-watertight: volume is approximate)"
         self.fig.text(
             0.02, 0.975,
-            f"{self.model_path.name}   volume = {self.volume:.6g}{watertight_note}",
+            f"{self.model_path.name}   volume = {self._fmt_volume(self.volume)}{watertight_note}",
             fontsize=10, va="top",
         )
         self.pos_text = self.fig.text(0.02, 0.945, "", fontsize=10, va="top")
         self.fig.text(
-            0.03, 0.905, "モデル全体(赤 = 現在の切断位置)", fontsize=10, va="top"
+            0.03, 0.905, "Full model (red = current slice plane)", fontsize=10, va="top"
         )
 
         ax_radio = self.fig.add_axes((0.015, 0.08, 0.09, 0.15))
-        ax_radio.set_title("axis", fontsize=9)
+        ax_radio.set_title("Axis", fontsize=9)
         self.radio = RadioButtons(ax_radio, ("x", "y", "z"), active="xyz".index(self.axis))
         self.radio.on_clicked(self._on_axis_change)
 
+        pitch_label = f"Pitch ({self.units})  " if self.units else "Pitch  "
         ax_pitch = self.fig.add_axes((0.28, 0.1, 0.18, 0.05))
-        self.pitch_box = TextBox(ax_pitch, "pitch  ", initial=f"{self.pitch:g}")
+        self.pitch_box = TextBox(ax_pitch, pitch_label, initial=f"{self.pitch:g}")
         self.pitch_box.on_submit(self._on_pitch_submit)
 
         ax_save = self.fig.add_axes((0.62, 0.1, 0.26, 0.05))
-        self.save_button = Button(ax_save, "Save slice (svg)")
+        self.save_button = Button(ax_save, "Save Slice (SVG)")
         self.save_button.on_clicked(self._on_save)
 
         self.ax_slider = self.fig.add_axes((0.14, 0.2, 0.76, 0.05))
@@ -236,13 +258,13 @@ class SliceViewer:
         index = int(self.slider.val)
         path_2d, _discrete_3d = self._section_at(index)
         if path_2d is None:
-            print("この位置は交差なしのため保存できません")
+            print("Cannot save: no intersection at this slice position")
             return
         outdir = self.model_path.parent / "slices_gui"
         outdir.mkdir(exist_ok=True)
         outpath = outdir / f"{self.model_path.stem}_{self.axis}{index:04d}_{self.heights[index]:.4f}.svg"
         core.save_section(path_2d, outpath)
-        print(f"保存しました: {outpath}")
+        print(f"Saved: {outpath}")
 
     # ---- 描画 ----
     def _show_index(self, index: int) -> None:
@@ -254,18 +276,18 @@ class SliceViewer:
 
         self.ax_section.clear()
         self.ax_section.set_aspect("equal")
-        self.ax_section.set_title("断面(この平面を真上から見た形)", fontsize=10)
+        self.ax_section.set_title("Cross-section (view along slicing axis)", fontsize=10)
         if path_2d is None:
             self.ax_section.text(
-                0.5, 0.5, "交差なし", ha="center", va="center", transform=self.ax_section.transAxes
+                0.5, 0.5, "No intersection", ha="center", va="center", transform=self.ax_section.transAxes
             )
         else:
             for polyline in path_2d.discrete:
                 self.ax_section.plot(polyline[:, 0], polyline[:, 1], "-k")
 
         self.pos_text.set_text(
-            f"axis={self.axis}  pitch={self.pitch:g}  "
-            f"index={index + 1}/{len(self.heights)}  position={position:.6g}"
+            f"axis={self.axis}  pitch={self._fmt_length(self.pitch)}  "
+            f"slice={index + 1}/{len(self.heights)}  position={self._fmt_length(position)}"
         )
         self.fig.canvas.draw_idle()
 
@@ -275,16 +297,27 @@ class SliceViewer:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="slice3d-gui", description="3Dモデルの断面・体積を確認するGUIビューア"
+        prog="slice3d-gui", description="Interactive GUI viewer for a 3D model's volume and slices"
     )
-    parser.add_argument("model", type=Path, help="入力3Dモデルファイル (STL/OBJ/PLY/GLBなど)")
-    parser.add_argument("--axis", choices=tuple(core.AXES), default="z", help="初期のスライス軸")
-    parser.add_argument("--pitch", type=float, default=None, help="初期のスライス間隔(既定: 全体を約30分割)")
+    parser.add_argument("model", type=Path, help="input 3D model file (STL/OBJ/PLY/GLB, etc.)")
+    parser.add_argument("--axis", choices=tuple(core.AXES), default="z", help="initial slicing axis")
+    parser.add_argument(
+        "--pitch", type=float, default=None, help="initial slice spacing (default: ~30 slices across the model)"
+    )
+    parser.add_argument(
+        "--units",
+        type=str,
+        default=None,
+        help='length unit label to display next to values, e.g. "m" or "mm". '
+        'Defaults to "m" for glTF/GLB files (meters by spec) and no unit otherwise; '
+        'pass --units "" to force no unit label.',
+    )
     parser.add_argument(
         "--max-preview-faces",
         type=int,
         default=_MAX_PREVIEW_FACES,
-        help=f"3D表示を間引く面数の上限(既定: {_MAX_PREVIEW_FACES})。動作が重い場合は小さくすると軽くなる",
+        help=f"max face count for the 3D preview mesh (default: {_MAX_PREVIEW_FACES}); "
+        "lower this if the 3D view feels slow",
     )
     return parser.parse_args(argv)
 
@@ -292,7 +325,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     viewer = SliceViewer(
-        args.model, axis=args.axis, pitch=args.pitch, max_preview_faces=args.max_preview_faces
+        args.model,
+        axis=args.axis,
+        pitch=args.pitch,
+        max_preview_faces=args.max_preview_faces,
+        units=args.units,
     )
     viewer.show()
 

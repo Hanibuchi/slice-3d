@@ -50,16 +50,22 @@ slice3d model.stl --axis z --pitch 2.0 --outdir slices --format svg
 pip install "slice3d[gui]"
 slice3d-gui model.stl
 slice3d-gui model.stl --axis x --pitch 0.01
+slice3d-gui model.glb              # glTF/GLBは仕様上メートル単位なので自動で"m"表示
+slice3d-gui model.stl --units mm   # STLなど単位不明な形式は明示的に指定
 ```
 
 ![GUIビューア](docs/assets/gui_screenshot.png)
+
+ウィンドウ内の表示は(体積・軸・数値など)すべて英語で統一しています。
 
 - ウィンドウ上部にモデル名・体積(`mesh.volume`、非watertightなら近似値である旨も表示)
 - 左側にモデル全体を半透明の3D表示。現在の切断位置を赤い平面と断面の輪郭線で重ねて表示するので、どこをどの向きで切っているか一目で分かる
 - 右側にその断面(切断面を真上から見た2D形状)をリアルタイム表示
 - スライダーでスライス位置(index / position)を切り替え
-- `axis` ラジオボタンでスライス軸を切り替え(切り替え時はpitchが軸の全長に応じて自動再設定される)
-- `pitch` テキストボックスで間隔を指定して Enter → 断面数が再計算される
+- `Axis` ラジオボタンでスライス軸を切り替え(切り替え時はpitchが軸の全長に応じて自動再設定される)
+- `Pitch` テキストボックスで間隔を指定して Enter → 断面数が再計算される
+- 体積・pitch・positionの表示には単位が付く。glTF/GLB(`.glb` / `.gltf`)は仕様上メートル単位と定められているため自動で`m`が付き、STL/OBJ/PLYなど単位情報を持たない形式は既定で単位なし
+  - `--units`(例: `mm`, `cm`)で表示単位を明示指定できる。`--units ""` で単位表示を消すことも可能
 - `Save slice (svg)` ボタンで現在表示中の断面を `<モデルと同じディレクトリ>/slices_gui/` にSVG保存
 
 ## ライブラリとして使う
