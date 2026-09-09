@@ -344,13 +344,18 @@ class SliceViewer:
 
     def _on_save(self, event) -> None:
         index = int(self.slider.val)
-        path_2d, _discrete_3d = self._section_at(index)
+        path_2d, discrete_3d = self._section_at(index)
         if path_2d is None:
             print("Cannot save: no intersection at this slice position")
             return
         outdir = self._outdir()
         outpath = outdir / f"{self.model_path.stem}_{self.axis}{index:04d}_{self.heights[index]:.4f}.{self.format}"
-        core.save_section(path_2d, outpath, self.format)
+        # polylines_3d/axis/bounds を渡すことで、保存画像(png)の表示範囲を
+        # モデル全体のバウンディングボックスに固定する(断面ごとに縮尺がバラつかない)。
+        core.save_section(
+            path_2d, outpath, self.format,
+            polylines_3d=discrete_3d, axis=self.axis, bounds=self.mesh.bounds,
+        )
         print(f"Saved: {outpath}")
 
     def _on_save_all(self, event) -> None:

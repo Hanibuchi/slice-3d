@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
@@ -33,6 +33,10 @@ class Slice:
     axis: str
     position: float
     path_2d: "trimesh.path.Path2D | None"
+    # 断面のワールド座標での点列(Nx3配列のリスト)。png保存時に実寸スケールを
+    # 揃えるために使う(path_2d はtrimeshが断面ごとに選ぶローカル2D座標系のため、
+    # 複数断面間でスケールが揃わない)。
+    polylines_3d: list = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
@@ -100,7 +104,13 @@ def iter_slices(
             yield Slice(index=i, axis=axis, position=float(h), path_2d=None)
             continue
         path_2d, _transform = section.to_2D()
-        yield Slice(index=i, axis=axis, position=float(h), path_2d=path_2d)
+        yield Slice(
+            index=i,
+            axis=axis,
+            position=float(h),
+            path_2d=path_2d,
+            polylines_3d=polylines(section),
+        )
 
 
 def slice_mesh(
@@ -125,10 +135,24 @@ def polylines(path) -> list[np.ndarray]:
     return [entity.discrete(path.vertices) for entity in path.entities]
 
 
-def save_section(path_2d: "trimesh.path.Path2D", outpath: str | Path, fmt: str | None = None) -> Path:
+def save_section(
+    path_2d: "trimesh.path.Path2D",
+    outpath: str | Path,
+    fmt: str | None = None,
+    *,
+    polylines_3d: "list[np.ndarray] | None" = None,
+    axis: str | None = None,
+    bounds: "np.ndarray | None" = None,
+) -> Path:
     """1枚の断面 (Path2D) をファイルへ保存する。
 
     fmt: "svg" | "dxf" | "png" | "csv"。省略時は outpath の拡張子から判定する。
+
+    fmt="png" で保存する場合は、``polylines_3d``(ワールド座標の点列。
+    ``Slice.polylines_3d`` を渡す)、``axis``、``bounds``(``mesh.bounds``)を
+    指定すると、画像の表示範囲をモデル全体のバウンディングボックスに固定できる。
+    これらを省略すると各断面の内容だけに自動フィットして保存されるため、
+    断面ごとに画像の縮尺(見た目の大きさ)がバラバラになってしまう点に注意。
     """
     outpath = Path(outpath)
     fmt = (fmt or outpath.suffix.lstrip(".")).lower()
@@ -143,11 +167,26 @@ def save_section(path_2d: "trimesh.path.Path2D", outpath: str | Path, fmt: str |
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots()
-        for polyline in polylines(path_2d):
-            ax.plot(polyline[:, 0], polyline[:, 1], "-k")
-        ax.set_aspect("equal")
-        ax.axis("off")
-        fig.savefig(outpath, bbox_inches="tight", dpi=150)
+        if polylines_3d is not None and axis is not None and bounds is not None:
+            # ワールド座標をそのまま2軸に投影し、表示範囲をモデル全体のバウンディング
+            # ボックスに固定する。これにより、断面の大きさに関わらずどの画像も
+            # 元モデルに対する実際の縮尺(比率)を保って保存される。
+            axis_idx = AXES[axis]
+            other = [i for i in range(3) if i != axis_idx]
+            for polyline in polylines_3d:
+                ax.plot(polyline[:, other[0]], polyline[:, other[1]], "-k")
+            ax.set_xlim(bounds[0, other[0]], bounds[1, other[0]])
+            ax.set_ylim(bounds[0, other[1]], bounds[1, other[1]])
+            ax.set_aspect("equal")
+            ax.axis("off")
+            fig.savefig(outpath, dpi=150)
+        else:
+            # 従来どおり: 断面の内容だけに自動フィットする(スケールは断面ごとに異なる)。
+            for polyline in polylines(path_2d):
+                ax.plot(polyline[:, 0], polyline[:, 1], "-k")
+            ax.set_aspect("equal")
+            ax.axis("off")
+            fig.savefig(outpath, bbox_inches="tight", dpi=150)
         plt.close(fig)
     elif fmt == "csv":
         lines = ["polyline_id,x,y"]
@@ -199,5 +238,10 @@ def slice_file(
         if s.is_empty:
             continue
         outpath = outdir / f"{stem}_{axis}{s.index:04d}_{s.position:.4f}.{fmt}"
-        written.append(save_section(s.path_2d, outpath, fmt))
+        written.append(
+            save_section(
+                s.path_2d, outpath, fmt,
+                polylines_3d=s.polylines_3d, axis=axis, bounds=mesh.bounds,
+            )
+        )
     return written

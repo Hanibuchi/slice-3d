@@ -97,3 +97,35 @@ def test_slice_file_png_covers_open_curve_region(tmp_path):
     assert written
     for p in written:
         assert p.stat().st_size > 0
+
+
+def test_slice_file_png_images_share_consistent_scale(tmp_path):
+    """slice_file が生成するPNGは、断面の大きさに関わらず全て同じピクセルサイズ
+    (=元モデルに対する同じ実寸スケール)で保存されることを確認する。以前は
+    断面の内容だけに自動フィットしていたため、小さな断面ほど画像いっぱいに
+    ズームされ、画像同士の縮尺が揃っていなかった。
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.image as mpimg
+
+    written = slice3d.slice_file(AMMONITE_PATH, tmp_path, axis="x", thickness=0.02, fmt="png")
+
+    assert len(written) >= 3
+    shapes = {mpimg.imread(p).shape[:2] for p in written}
+    assert len(shapes) == 1, f"画像サイズが断面ごとに異なっています: {shapes}"
+
+
+def test_save_section_png_without_scale_hint_still_works(tmp_path):
+    """polylines_3d/axis/bounds を渡さない場合は、従来どおり断面の内容に
+    自動フィットして保存できる(後方互換性の確認)。"""
+    mesh = make_sphere()
+    s = next(s for s in slice3d.iter_slices(mesh, axis="z", thickness=2.5) if not s.is_empty)
+
+    outpath = tmp_path / "section.png"
+    result = slice3d.save_section(s.path_2d, outpath, "png")
+
+    assert result == outpath
+    assert outpath.exists()
+    assert outpath.stat().st_size > 0

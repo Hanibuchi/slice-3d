@@ -174,6 +174,25 @@ def test_viewer_save_all_writes_every_nonempty_slice(tmp_path):
     assert all(p.suffix == ".csv" for p in saved)
 
 
+def test_viewer_save_all_png_share_consistent_scale(tmp_path):
+    """保存されるPNGが、断面の大きさに関わらず全て同じピクセルサイズ(=元モデルに
+    対する同じ縮尺)で保存されることを確認する回帰テスト。球のz軸スライスは
+    赤道付近で大きく、極付近で小さくなるため縮尺のブレを検出しやすい。"""
+    import matplotlib.image as mpimg
+
+    model_path = make_sphere_file(tmp_path)
+    viewer = SliceViewer(model_path, axis="z", thickness=2.0)
+    viewer._on_format_change("png")
+
+    viewer._on_save_all(None)
+
+    outdir = model_path.parent / "slices_gui"
+    saved = list(outdir.iterdir())
+    assert len(saved) >= 3
+    shapes = {mpimg.imread(p).shape[:2] for p in saved}
+    assert len(shapes) == 1, f"画像サイズが断面ごとに異なっています: {shapes}"
+
+
 def test_viewer_save_all_covers_open_cross_sections():
     """save all が、開いた断面(閉じたループにならない位置)も欠落なく
     保存することを確認する回帰テスト。"""
