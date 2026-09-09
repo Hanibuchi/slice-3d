@@ -53,6 +53,8 @@ _MAX_PREVIEW_FACES = 4_000
 # STL/OBJ/PLYなどは単位の情報を持たないファイル形式なので、既定は単位なし(空文字)。
 _UNITS_BY_EXTENSION = {".glb": "m", ".gltf": "m"}
 
+_AXIS_NAMES = ("x", "y", "z")
+
 
 def _default_units(model_path: Path) -> str:
     return _UNITS_BY_EXTENSION.get(model_path.suffix.lower(), "")
@@ -288,16 +290,30 @@ class SliceViewer:
 
         self._update_3d_highlight(index, discrete_3d)
 
+        # 断面図は3Dハイライトと同じワールド座標(discrete_3d)をそのまま2軸に投影して描く。
+        # path_2d(trimeshが断面ごとに独自に選ぶローカル2D座標系)を使うと、断面の形だけで
+        # 自動スケーリングされてしまい、小さな断片がパネルいっぱいに拡大されて3D表示と
+        # 対応が取れなくなる(特にthin方向の軸でスライスすると顕著)。
+        # ここではモデル全体のバウンディングボックスに表示範囲を固定し、常に同じ縮尺で見せる。
+        axis_idx = core.AXES[self.axis]
+        other = [i for i in range(3) if i != axis_idx]
+        xlabel, ylabel = _AXIS_NAMES[other[0]], _AXIS_NAMES[other[1]]
+
         self.ax_section.clear()
         self.ax_section.set_aspect("equal")
         self.ax_section.set_title("Cross-section (view along slicing axis)", fontsize=10)
+        self.ax_section.set_xlabel(xlabel, fontsize=9)
+        self.ax_section.set_ylabel(ylabel, fontsize=9)
+        b = self.mesh.bounds
+        self.ax_section.set_xlim(b[0, other[0]], b[1, other[0]])
+        self.ax_section.set_ylim(b[0, other[1]], b[1, other[1]])
         if path_2d is None:
             self.ax_section.text(
                 0.5, 0.5, "No intersection", ha="center", va="center", transform=self.ax_section.transAxes
             )
         else:
-            for polyline in path_2d.discrete:
-                self.ax_section.plot(polyline[:, 0], polyline[:, 1], "-k")
+            for polyline in discrete_3d:
+                self.ax_section.plot(polyline[:, other[0]], polyline[:, other[1]], "-k")
 
         self.pos_text.set_text(
             f"axis={self.axis}  thickness={self._fmt_length(self.thickness)}  "
