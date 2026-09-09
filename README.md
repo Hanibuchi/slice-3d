@@ -42,6 +42,26 @@ slice3d model.stl --axis z --pitch 2.0 --outdir slices --format svg
 
 交差しない位置のスライスは自動的にスキップされます。
 
+## GUIビューア
+
+体積・スライス位置を確認しながら、軸やスライス間隔(pitch)をその場で変更できる専用ウィンドウを開きます。
+
+```bash
+pip install "slice3d[gui]"
+slice3d-gui model.stl
+slice3d-gui model.stl --axis x --pitch 0.01
+```
+
+![GUIビューア](docs/assets/gui_screenshot.png)
+
+- ウィンドウ上部にモデル名・体積(`mesh.volume`、非watertightなら近似値である旨も表示)
+- 左側にモデル全体を半透明の3D表示。現在の切断位置を赤い平面と断面の輪郭線で重ねて表示するので、どこをどの向きで切っているか一目で分かる
+- 右側にその断面(切断面を真上から見た2D形状)をリアルタイム表示
+- スライダーでスライス位置(index / position)を切り替え
+- `axis` ラジオボタンでスライス軸を切り替え(切り替え時はpitchが軸の全長に応じて自動再設定される)
+- `pitch` テキストボックスで間隔を指定して Enter → 断面数が再計算される
+- `Save slice (svg)` ボタンで現在表示中の断面を `<モデルと同じディレクトリ>/slices_gui/` にSVG保存
+
 ## ライブラリとして使う
 
 ```python

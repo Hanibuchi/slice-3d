@@ -6,4 +6,5 @@ build/
 dist/
 .pytest_cache/
 examples/output/
+examples/slices_gui/
 .DS_Store
