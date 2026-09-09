@@ -54,6 +54,7 @@ _MAX_PREVIEW_FACES = 4_000
 _UNITS_BY_EXTENSION = {".glb": "m", ".gltf": "m"}
 
 _AXIS_NAMES = ("x", "y", "z")
+_FORMATS = ("svg", "png", "dxf", "csv")
 
 
 def _default_units(model_path: Path) -> str:
@@ -83,6 +84,7 @@ class SliceViewer:
         thickness: float | None = None,
         max_preview_faces: int = _MAX_PREVIEW_FACES,
         units: str | None = None,
+        fmt: str = "svg",
     ):
         self.model_path = Path(model_path)
         self.mesh = core.load_mesh(self.model_path)
@@ -90,6 +92,10 @@ class SliceViewer:
         self.volume = float(self.mesh.volume)
         self.max_preview_faces = max_preview_faces
         self.units = _default_units(self.model_path) if units is None else units
+        if fmt not in _FORMATS:
+            raise ValueError(f"fmt は {list(_FORMATS)} のいずれかである必要があります: {fmt!r}")
+        self.format = fmt
+        self._format_buttons: dict[str, Button] = {}
 
         if thickness is None:
             extent = self.mesh.extents[core.AXES[axis]]
@@ -156,16 +162,16 @@ class SliceViewer:
 
     # ---- UI構築 ----
     def _build_ui(self) -> None:
-        self.fig = plt.figure(figsize=(11, 8))
+        self.fig = plt.figure(figsize=(11, 9))
         try:
             self.fig.canvas.manager.set_window_title(f"slice3d viewer - {self.model_path.name}")
         except AttributeError:
             pass
 
-        self.ax_3d = self.fig.add_axes((0.03, 0.28, 0.45, 0.58), projection="3d")
+        self.ax_3d = self.fig.add_axes((0.03, 0.34, 0.45, 0.55), projection="3d")
         self._draw_static_mesh()
 
-        self.ax_section = self.fig.add_axes((0.55, 0.28, 0.43, 0.58))
+        self.ax_section = self.fig.add_axes((0.55, 0.34, 0.43, 0.55))
         self.ax_section.set_aspect("equal")
         self.ax_section.set_title("Cross-section (view along slicing axis)", fontsize=10)
 
@@ -175,15 +181,15 @@ class SliceViewer:
             f"{self.model_path.name}   volume = {self._fmt_volume(self.volume)}{watertight_note}",
             fontsize=10, va="top",
         )
-        self.pos_text = self.fig.text(0.02, 0.945, "", fontsize=10, va="top")
+        self.pos_text = self.fig.text(0.02, 0.95, "", fontsize=10, va="top")
         self.fig.text(
-            0.03, 0.905, "Full model (red = current slice plane)", fontsize=10, va="top"
+            0.03, 0.92, "Full model (red = current slice plane)", fontsize=10, va="top"
         )
 
         # ラジオボタンは既定だと丸のサイズ・クリック領域が小さく押しづらいため、
         # 専用エリアを広めに取った上で radio_props/label_props でマーカーと
         # フォントを拡大している。
-        ax_radio = self.fig.add_axes((0.01, 0.02, 0.13, 0.24))
+        ax_radio = self.fig.add_axes((0.01, 0.02, 0.13, 0.27))
         ax_radio.set_title("Axis", fontsize=11)
         self.radio = RadioButtons(
             ax_radio,
@@ -194,22 +200,39 @@ class SliceViewer:
         )
         self.radio.on_clicked(self._on_axis_change)
 
+        self.ax_slider = self.fig.add_axes((0.19, 0.25, 0.71, 0.05))
+        # スライダーのつまみも既定サイズだと掴みづらいので大きくする
+        # (トラック自体はどこをクリックしてもその位置へ移動できる)。
+        self._slider_handle_style = {"size": 18}
+
         thickness_label = f"Thickness ({self.units})  " if self.units else "Thickness  "
-        ax_thickness = self.fig.add_axes((0.28, 0.09, 0.18, 0.07))
+        ax_thickness = self.fig.add_axes((0.19, 0.16, 0.18, 0.06))
         self.thickness_box = TextBox(ax_thickness, thickness_label, initial=f"{self.thickness:g}")
         self.thickness_box.text_disp.set_fontsize(12)
         self.thickness_box.label.set_fontsize(11)
         self.thickness_box.on_submit(self._on_thickness_submit)
 
-        ax_save = self.fig.add_axes((0.62, 0.09, 0.26, 0.07))
-        self.save_button = Button(ax_save, "Save Slice (SVG)")
-        self.save_button.label.set_fontsize(11)
-        self.save_button.on_clicked(self._on_save)
+        ax_save_current = self.fig.add_axes((0.62, 0.16, 0.28, 0.06))
+        self.save_current_button = Button(ax_save_current, "")
+        self.save_current_button.label.set_fontsize(11)
+        self.save_current_button.on_clicked(self._on_save)
 
-        self.ax_slider = self.fig.add_axes((0.19, 0.2, 0.71, 0.05))
-        # スライダーのつまみも既定サイズだと掴みづらいので大きくする
-        # (トラック自体はどこをクリックしてもその位置へ移動できる)。
-        self._slider_handle_style = {"size": 18}
+        self.fig.text(0.19, 0.10, "Format:", fontsize=10, va="center")
+        format_x = (0.30, 0.44, 0.58, 0.72)
+        format_width = 0.13
+        for x, fmt in zip(format_x, _FORMATS):
+            ax_fmt = self.fig.add_axes((x, 0.075, format_width, 0.05))
+            button = Button(ax_fmt, fmt.upper())
+            button.label.set_fontsize(10)
+            button.on_clicked(lambda event, f=fmt: self._on_format_change(f))
+            self._format_buttons[fmt] = button
+
+        ax_save_all = self.fig.add_axes((0.19, 0.005, 0.81, 0.06))
+        self.save_all_button = Button(ax_save_all, "")
+        self.save_all_button.label.set_fontsize(11)
+        self.save_all_button.on_clicked(self._on_save_all)
+
+        self._refresh_format_buttons()
 
     def _preview_mesh(self):
         """3D表示専用の軽量化されたメッシュを返す(スライス計算には使わない)。"""
@@ -285,6 +308,7 @@ class SliceViewer:
         self.thickness = _nice_thickness(self.mesh.extents[core.AXES[label]])
         self.thickness_box.set_val(f"{self.thickness:g}")
         self._recompute_slices()
+        self._refresh_format_buttons()  # Save Allボタンのラベルに軸名が含まれるため更新
         self.fig.canvas.draw_idle()
 
     def _on_thickness_submit(self, text: str) -> None:
@@ -298,17 +322,51 @@ class SliceViewer:
         self._recompute_slices()
         self.fig.canvas.draw_idle()
 
+    def _on_format_change(self, fmt: str) -> None:
+        self.format = fmt
+        self._refresh_format_buttons()
+        self.fig.canvas.draw_idle()
+
+    def _refresh_format_buttons(self) -> None:
+        """選択中のフォーマットのボタンをハイライトし、保存ボタンのラベルを更新する。"""
+        for fmt, button in self._format_buttons.items():
+            selected = fmt == self.format
+            button.color = "lightblue" if selected else "0.85"
+            button.hovercolor = "skyblue" if selected else "0.95"
+            button.ax.set_facecolor(button.color)
+        self.save_current_button.label.set_text(f"Save Current Slice ({self.format.upper()})")
+        self.save_all_button.label.set_text(f"Save All Slices Along {self.axis.upper()}-Axis ({self.format.upper()})")
+
+    def _outdir(self) -> Path:
+        outdir = self.model_path.parent / "slices_gui"
+        outdir.mkdir(exist_ok=True)
+        return outdir
+
     def _on_save(self, event) -> None:
         index = int(self.slider.val)
         path_2d, _discrete_3d = self._section_at(index)
         if path_2d is None:
             print("Cannot save: no intersection at this slice position")
             return
-        outdir = self.model_path.parent / "slices_gui"
-        outdir.mkdir(exist_ok=True)
-        outpath = outdir / f"{self.model_path.stem}_{self.axis}{index:04d}_{self.heights[index]:.4f}.svg"
-        core.save_section(path_2d, outpath)
+        outdir = self._outdir()
+        outpath = outdir / f"{self.model_path.stem}_{self.axis}{index:04d}_{self.heights[index]:.4f}.{self.format}"
+        core.save_section(path_2d, outpath, self.format)
         print(f"Saved: {outpath}")
+
+    def _on_save_all(self, event) -> None:
+        """現在の軸・thickness設定で全スライスを一括保存する(交差しない位置はスキップ)。"""
+        outdir = self._outdir()
+        written = core.slice_file(
+            self.model_path,
+            outdir,
+            axis=self.axis,
+            thickness=self.thickness,
+            fmt=self.format,
+        )
+        print(
+            f"Saved {len(written)}/{len(self.heights)} slices "
+            f"(axis={self.axis}, thickness={self._fmt_length(self.thickness)}, format={self.format}) to {outdir}"
+        )
 
     # ---- 描画 ----
     def _show_index(self, index: int) -> None:
@@ -381,6 +439,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=f"max face count for the 3D preview mesh (default: {_MAX_PREVIEW_FACES}); "
         "lower this if the 3D view feels slow",
     )
+    parser.add_argument(
+        "--format",
+        choices=_FORMATS,
+        default="svg",
+        help="initial export format for the Save buttons (default: svg); "
+        "can also be changed in the window",
+    )
     return parser.parse_args(argv)
 
 
@@ -392,6 +457,7 @@ def main(argv: list[str] | None = None) -> None:
         thickness=args.thickness,
         max_preview_faces=args.max_preview_faces,
         units=args.units,
+        fmt=args.format,
     )
     viewer.show()
 

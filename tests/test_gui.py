@@ -119,3 +119,77 @@ def test_viewer_save_writes_file(tmp_path):
     outdir = model_path.parent / "slices_gui"
     assert outdir.exists()
     assert any(outdir.iterdir())
+
+
+def test_viewer_default_format_is_svg(tmp_path):
+    model_path = make_sphere_file(tmp_path)
+    viewer = SliceViewer(model_path, axis="z", thickness=2.5)
+
+    assert viewer.format == "svg"
+
+
+def test_viewer_rejects_unknown_format(tmp_path):
+    model_path = make_sphere_file(tmp_path)
+    with pytest.raises(ValueError):
+        SliceViewer(model_path, axis="z", thickness=2.5, fmt="bmp")
+
+
+def test_viewer_format_change_updates_state_and_labels(tmp_path):
+    model_path = make_sphere_file(tmp_path)
+    viewer = SliceViewer(model_path, axis="z", thickness=2.5)
+
+    viewer._on_format_change("png")
+
+    assert viewer.format == "png"
+    assert "PNG" in viewer.save_current_button.label.get_text()
+    assert "PNG" in viewer.save_all_button.label.get_text()
+
+
+def test_viewer_save_current_respects_selected_format(tmp_path):
+    model_path = make_sphere_file(tmp_path)
+    viewer = SliceViewer(model_path, axis="z", thickness=2.5)
+    viewer._on_format_change("png")
+
+    middle = len(viewer.heights) // 2
+    viewer.slider.set_val(middle)
+    viewer._on_save(None)
+
+    outdir = model_path.parent / "slices_gui"
+    saved = list(outdir.iterdir())
+    assert saved
+    assert all(p.suffix == ".png" for p in saved)
+
+
+def test_viewer_save_all_writes_every_nonempty_slice(tmp_path):
+    model_path = make_sphere_file(tmp_path)
+    viewer = SliceViewer(model_path, axis="z", thickness=2.5)
+    viewer._on_format_change("csv")
+
+    viewer._on_save_all(None)
+
+    outdir = model_path.parent / "slices_gui"
+    saved = list(outdir.iterdir())
+    n_nonempty = sum(1 for h in range(len(viewer.heights)) if viewer._section_at(h)[0] is not None)
+    assert len(saved) == n_nonempty
+    assert all(p.suffix == ".csv" for p in saved)
+
+
+def test_viewer_save_all_covers_open_cross_sections():
+    """save all が、開いた断面(閉じたループにならない位置)も欠落なく
+    保存することを確認する回帰テスト。"""
+    outdir_marker = AMMONITE_PATH.parent / "slices_gui"
+    if outdir_marker.exists():
+        for p in outdir_marker.iterdir():
+            p.unlink()
+
+    viewer = SliceViewer(AMMONITE_PATH, axis="y", thickness=0.01, fmt="png")
+    try:
+        viewer._on_save_all(None)
+        saved_names = {p.name for p in outdir_marker.iterdir()}
+        # y=0.18付近(開いた断面)のファイルが含まれていること
+        assert any("0.1800" in name or "0.18" in name for name in saved_names)
+    finally:
+        if outdir_marker.exists():
+            for p in outdir_marker.iterdir():
+                p.unlink()
+            outdir_marker.rmdir()

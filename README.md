@@ -52,6 +52,7 @@ slice3d-gui model.stl
 slice3d-gui model.stl --axis x --thickness 0.01
 slice3d-gui model.glb              # glTF/GLBは仕様上メートル単位なので自動で"m"表示
 slice3d-gui model.stl --units mm   # STLなど単位不明な形式は明示的に指定
+slice3d-gui model.stl --format png # Save系ボタンの初期フォーマット(既定: svg)
 ```
 
 ![GUIビューア](docs/assets/gui_screenshot.png)
@@ -66,7 +67,10 @@ slice3d-gui model.stl --units mm   # STLなど単位不明な形式は明示的�
 - `Thickness` テキストボックスで間隔を指定して Enter → 断面数が再計算される
 - 体積・thickness・positionの表示には単位が付く。glTF/GLB(`.glb` / `.gltf`)は仕様上メートル単位と定められているため自動で`m`が付き、STL/OBJ/PLYなど単位情報を持たない形式は既定で単位なし
   - `--units`(例: `mm`, `cm`)で表示単位を明示指定できる。`--units ""` で単位表示を消すことも可能
-- `Save slice (svg)` ボタンで現在表示中の断面を `<モデルと同じディレクトリ>/slices_gui/` にSVG保存
+- `Format` ボタン(SVG/PNG/DXF/CSV)で保存形式を選択。選択中の形式はハイライトされ、Saveボタンのラベルにも反映される
+- `Save Current Slice` ボタンで現在表示中の断面を1枚保存
+- `Save All Slices Along <軸>-Axis` ボタンで、現在の軸・thickness設定のまま全断面を一括保存(交差しない位置は自動的にスキップ)
+- 保存先はどちらも `<モデルと同じディレクトリ>/slices_gui/`
 
 ## ライブラリとして使う
 
