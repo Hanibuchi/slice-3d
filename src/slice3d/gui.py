@@ -14,9 +14,11 @@ matplotlib が必要 (``pip install "slice3d[gui]"``)。
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 
 import numpy as np
+import trimesh
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button, RadioButtons, Slider, TextBox
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -40,18 +42,27 @@ if _cjk_font:
     plt.rcParams["font.family"] = [_cjk_font, "DejaVu Sans"]
 plt.rcParams["axes.unicode_minus"] = False
 
-# 3Dプレビューが重くなりすぎないよう、面数がこれを超えたら間引いて表示する。
-_MAX_PREVIEW_FACES = 60_000
+# 3Dプレビューが重くならないよう、面数がこれを超えたらメッシュを簡略化して表示する。
+# mplot3dは面数に比例して回転・再描画が遅くなるため、数千面程度に抑えるとスムーズに動く。
+# (スライス計算自体は元メッシュの精度で行われ、この簡略化は3D表示にのみ影響する)
+_MAX_PREVIEW_FACES = 4_000
 
 
 class SliceViewer:
     """3D表示 + スライダーで断面を切り替えながら確認するmatplotlibウィンドウ。"""
 
-    def __init__(self, model_path: str | Path, axis: str = "z", pitch: float | None = None):
+    def __init__(
+        self,
+        model_path: str | Path,
+        axis: str = "z",
+        pitch: float | None = None,
+        max_preview_faces: int = _MAX_PREVIEW_FACES,
+    ):
         self.model_path = Path(model_path)
         self.mesh = core.load_mesh(self.model_path)
         self.axis = axis
         self.volume = float(self.mesh.volume)
+        self.max_preview_faces = max_preview_faces
 
         if pitch is None:
             extent = self.mesh.extents[core.AXES[axis]]
@@ -143,13 +154,24 @@ class SliceViewer:
 
         self.ax_slider = self.fig.add_axes((0.14, 0.2, 0.76, 0.05))
 
+    def _preview_mesh(self):
+        """3D表示専用の軽量化されたメッシュを返す(スライス計算には使わない)。"""
+        mesh = self.mesh
+        if len(mesh.faces) <= self.max_preview_faces:
+            return mesh
+        try:
+            return mesh.simplify_quadric_decimation(face_count=self.max_preview_faces)
+        except Exception:
+            # fast_simplification が無い環境などへのフォールバック: 単純間引き。
+            # 形状の見え方は粗くなるが、表示が固まるよりはよい。
+            step = math.ceil(len(mesh.faces) / self.max_preview_faces)
+            faces = mesh.faces[::step]
+            return trimesh.Trimesh(vertices=mesh.vertices, faces=faces, process=False)
+
     def _draw_static_mesh(self) -> None:
         """モデル全体を半透明の3Dサーフェスとして一度だけ描画する(スライス操作では再描画しない)。"""
-        faces = self.mesh.faces
-        if len(faces) > _MAX_PREVIEW_FACES:
-            step = max(1, len(faces) // _MAX_PREVIEW_FACES)
-            faces = faces[::step]
-        tri = self.mesh.vertices[faces]
+        preview = self._preview_mesh()
+        tri = preview.vertices[preview.faces]
 
         surface = Poly3DCollection(tri, alpha=0.25, facecolor="lightsteelblue", edgecolor="none")
         self.ax_3d.add_collection3d(surface)
@@ -258,12 +280,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("model", type=Path, help="入力3Dモデルファイル (STL/OBJ/PLY/GLBなど)")
     parser.add_argument("--axis", choices=tuple(core.AXES), default="z", help="初期のスライス軸")
     parser.add_argument("--pitch", type=float, default=None, help="初期のスライス間隔(既定: 全体を約30分割)")
+    parser.add_argument(
+        "--max-preview-faces",
+        type=int,
+        default=_MAX_PREVIEW_FACES,
+        help=f"3D表示を間引く面数の上限(既定: {_MAX_PREVIEW_FACES})。動作が重い場合は小さくすると軽くなる",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    viewer = SliceViewer(args.model, axis=args.axis, pitch=args.pitch)
+    viewer = SliceViewer(
+        args.model, axis=args.axis, pitch=args.pitch, max_preview_faces=args.max_preview_faces
+    )
     viewer.show()
 
 
