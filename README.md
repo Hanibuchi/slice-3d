@@ -66,6 +66,7 @@ for s in slice3d.iter_slices(mesh, axis="z", pitch=1.0):
 - `slice3d.iter_slices(mesh, axis="z", pitch=1.0, start=None, end=None)` — `Slice` を1枚ずつ生成するイテレータ
 - `slice3d.slice_mesh(...)` — `iter_slices` の結果をリストで取得
 - `slice3d.save_section(path_2d, outpath, fmt=None)` — 1枚の断面を保存(`fmt` 省略時は拡張子から推定)
+- `slice3d.print_volume(mesh)` — メッシュの体積を標準出力に表示し、その値を返す
 - `slice3d.slice_file(model_path, outdir, axis="z", pitch=1.0, start=None, end=None, fmt="svg")` — 読み込み〜保存までを一括実行
 
 `Slice` は `index`, `axis`, `position`, `path_2d`(`trimesh.path.Path2D | None`), `is_empty` を持つデータクラスです。

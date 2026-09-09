@@ -18,6 +18,7 @@ __all__ = [
     "slice_mesh",
     "save_section",
     "slice_file",
+    "print_volume",
 ]
 
 AXES = {"x": 0, "y": 1, "z": 2}
@@ -146,6 +147,19 @@ def save_section(path_2d: "trimesh.path.Path2D", outpath: str | Path, fmt: str |
         raise ValueError(f"未対応の出力形式です: {fmt!r} (対応形式: svg, dxf, png, csv)")
 
     return outpath
+
+
+def print_volume(mesh: trimesh.Trimesh) -> float:
+    """メッシュの体積を標準出力に表示し、その値を返す。
+
+    メッシュが水密(watertight)でない場合、体積の計算結果が不正確になりうるため警告を表示する。
+    """
+    if not mesh.is_watertight:
+        print("警告: メッシュが水密でないため、体積の計算結果は不正確な可能性があります")
+
+    volume = float(mesh.volume)
+    print(f"体積: {volume}")
+    return volume
 
 
 def slice_file(

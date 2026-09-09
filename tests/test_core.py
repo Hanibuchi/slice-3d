@@ -43,6 +43,14 @@ def test_slice_file_writes_svg(tmp_path):
     assert all(p.suffix == ".svg" for p in written)
 
 
+def test_print_volume_returns_sphere_volume(capsys):
+    mesh = make_sphere()
+    volume = slice3d.print_volume(mesh)
+
+    assert volume == mesh.volume
+    assert "体積" in capsys.readouterr().out
+
+
 def test_save_section_infers_format_from_extension(tmp_path):
     mesh = make_sphere()
     s = next(s for s in slice3d.iter_slices(mesh, axis="z", pitch=2.5) if not s.is_empty)
