@@ -52,15 +52,15 @@ def load_mesh(path: str | Path) -> trimesh.Trimesh:
 def compute_heights(
     mesh: trimesh.Trimesh,
     axis: str,
-    pitch: float,
+    thickness: float,
     start: float | None = None,
     end: float | None = None,
 ) -> np.ndarray:
-    """指定した軸に沿って、一定間隔(pitch)でスライスする位置の配列を計算する。"""
+    """指定した軸に沿って、一定間隔(thickness)でスライスする位置の配列を計算する。"""
     if axis not in AXES:
         raise ValueError(f"axis は {list(AXES)} のいずれかである必要があります: {axis!r}")
-    if pitch <= 0:
-        raise ValueError("pitch は正の値である必要があります")
+    if thickness <= 0:
+        raise ValueError("thickness は正の値である必要があります")
 
     axis_idx = AXES[axis]
     bounds_min, bounds_max = mesh.bounds[:, axis_idx]
@@ -69,14 +69,14 @@ def compute_heights(
     if hi <= lo:
         raise ValueError(f"終了位置は開始位置より大きい必要があります (start={lo}, end={hi})")
 
-    n = int(np.floor((hi - lo) / pitch)) + 1
-    return lo + np.arange(n) * pitch
+    n = int(np.floor((hi - lo) / thickness)) + 1
+    return lo + np.arange(n) * thickness
 
 
 def iter_slices(
     mesh: trimesh.Trimesh,
     axis: str = "z",
-    pitch: float = 1.0,
+    thickness: float = 1.0,
     start: float | None = None,
     end: float | None = None,
 ) -> Iterator[Slice]:
@@ -85,7 +85,7 @@ def iter_slices(
     交差しない位置では ``path_2d=None`` の Slice を返す(呼び出し側でスキップ判定できる)。
     """
     axis_idx = AXES[axis]
-    heights = compute_heights(mesh, axis, pitch, start, end)
+    heights = compute_heights(mesh, axis, thickness, start, end)
 
     normal = np.zeros(3)
     normal[axis_idx] = 1.0
@@ -105,12 +105,12 @@ def iter_slices(
 def slice_mesh(
     mesh: trimesh.Trimesh,
     axis: str = "z",
-    pitch: float = 1.0,
+    thickness: float = 1.0,
     start: float | None = None,
     end: float | None = None,
 ) -> list[Slice]:
     """iter_slices の結果をリストとして返す。"""
-    return list(iter_slices(mesh, axis=axis, pitch=pitch, start=start, end=end))
+    return list(iter_slices(mesh, axis=axis, thickness=thickness, start=start, end=end))
 
 
 def save_section(path_2d: "trimesh.path.Path2D", outpath: str | Path, fmt: str | None = None) -> Path:
@@ -166,7 +166,7 @@ def slice_file(
     model_path: str | Path,
     outdir: str | Path,
     axis: str = "z",
-    pitch: float = 1.0,
+    thickness: float = 1.0,
     start: float | None = None,
     end: float | None = None,
     fmt: str = "svg",
@@ -183,7 +183,7 @@ def slice_file(
     stem = model_path.stem
 
     written: list[Path] = []
-    for s in iter_slices(mesh, axis=axis, pitch=pitch, start=start, end=end):
+    for s in iter_slices(mesh, axis=axis, thickness=thickness, start=start, end=end):
         if s.is_empty:
             continue
         outpath = outdir / f"{stem}_{axis}{s.index:04d}_{s.position:.4f}.{fmt}"

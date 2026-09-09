@@ -1,12 +1,12 @@
 """3Dモデルの断面・体積を確認するGUIビューア。
 
 専用ウィンドウを開き、3D表示でモデル全体と現在の切断位置を確認しながら、
-スライダーで断面を切り替えられる。軸(x/y/z)とスライス間隔(pitch)はウィンドウ上で変更できる。
+スライダーで断面を切り替えられる。軸(x/y/z)とスライス間隔(thickness)はウィンドウ上で変更できる。
 
 使い方::
 
     slice3d-gui model.stl
-    slice3d-gui model.stl --axis x --pitch 0.01
+    slice3d-gui model.stl --axis x --thickness 0.01
     slice3d-gui model.glb              # glTF/GLBは仕様上メートル単位なので自動で"m"表示
     slice3d-gui model.stl --units mm   # STLなど単位不明な形式は明示的に指定
 
@@ -58,6 +58,19 @@ def _default_units(model_path: Path) -> str:
     return _UNITS_BY_EXTENSION.get(model_path.suffix.lower(), "")
 
 
+def _nice_thickness(extent: float, target_slices: int = 30) -> float:
+    """extentを約target_slices分割する、キリの良いthickness値(1/2/5 x 10^n)を選ぶ。"""
+    raw = extent / target_slices
+    if raw <= 0:
+        return max(raw, 1e-9)
+    magnitude = 10 ** math.floor(math.log10(raw))
+    for m in (1, 2, 5, 10):
+        candidate = m * magnitude
+        if candidate >= raw:
+            return candidate
+    return 10 * magnitude
+
+
 class SliceViewer:
     """3D表示 + スライダーで断面を切り替えながら確認するmatplotlibウィンドウ。"""
 
@@ -65,7 +78,7 @@ class SliceViewer:
         self,
         model_path: str | Path,
         axis: str = "z",
-        pitch: float | None = None,
+        thickness: float | None = None,
         max_preview_faces: int = _MAX_PREVIEW_FACES,
         units: str | None = None,
     ):
@@ -76,10 +89,10 @@ class SliceViewer:
         self.max_preview_faces = max_preview_faces
         self.units = _default_units(self.model_path) if units is None else units
 
-        if pitch is None:
+        if thickness is None:
             extent = self.mesh.extents[core.AXES[axis]]
-            pitch = max(extent / 30, 1e-9)
-        self.pitch = pitch
+            thickness = _nice_thickness(extent)
+        self.thickness = thickness
 
         self.heights = None
         self.slider = None
@@ -90,17 +103,18 @@ class SliceViewer:
         self._recompute_slices()
 
     # ---- 表示用フォーマット ----
+    # 有効数字3桁に丸める(生の浮動小数点をそのまま出すと桁数が多すぎて読みにくいため)。
     def _fmt_length(self, value: float) -> str:
         suffix = f" {self.units}" if self.units else ""
-        return f"{value:.6g}{suffix}"
+        return f"{value:.3g}{suffix}"
 
     def _fmt_volume(self, value: float) -> str:
         suffix = f" {self.units}³" if self.units else ""
-        return f"{value:.6g}{suffix}"
+        return f"{value:.3g}{suffix}"
 
     # ---- データ ----
     def _recompute_slices(self) -> None:
-        self.heights = core.compute_heights(self.mesh, self.axis, self.pitch)
+        self.heights = core.compute_heights(self.mesh, self.axis, self.thickness)
         self._rebuild_slider()
 
     def _section_at(self, index: int):
@@ -165,10 +179,10 @@ class SliceViewer:
         self.radio = RadioButtons(ax_radio, ("x", "y", "z"), active="xyz".index(self.axis))
         self.radio.on_clicked(self._on_axis_change)
 
-        pitch_label = f"Pitch ({self.units})  " if self.units else "Pitch  "
-        ax_pitch = self.fig.add_axes((0.28, 0.1, 0.18, 0.05))
-        self.pitch_box = TextBox(ax_pitch, pitch_label, initial=f"{self.pitch:g}")
-        self.pitch_box.on_submit(self._on_pitch_submit)
+        thickness_label = f"Thickness ({self.units})  " if self.units else "Thickness  "
+        ax_thickness = self.fig.add_axes((0.28, 0.1, 0.18, 0.05))
+        self.thickness_box = TextBox(ax_thickness, thickness_label, initial=f"{self.thickness:g}")
+        self.thickness_box.on_submit(self._on_thickness_submit)
 
         ax_save = self.fig.add_axes((0.62, 0.1, 0.26, 0.05))
         self.save_button = Button(ax_save, "Save Slice (SVG)")
@@ -238,19 +252,19 @@ class SliceViewer:
     # ---- コールバック ----
     def _on_axis_change(self, label: str) -> None:
         self.axis = label
-        self.pitch = max(self.mesh.extents[core.AXES[label]] / 30, 1e-9)
-        self.pitch_box.set_val(f"{self.pitch:g}")
+        self.thickness = _nice_thickness(self.mesh.extents[core.AXES[label]])
+        self.thickness_box.set_val(f"{self.thickness:g}")
         self._recompute_slices()
         self.fig.canvas.draw_idle()
 
-    def _on_pitch_submit(self, text: str) -> None:
+    def _on_thickness_submit(self, text: str) -> None:
         try:
-            pitch = float(text)
+            thickness = float(text)
         except ValueError:
             return
-        if pitch <= 0:
+        if thickness <= 0:
             return
-        self.pitch = pitch
+        self.thickness = thickness
         self._recompute_slices()
         self.fig.canvas.draw_idle()
 
@@ -286,7 +300,7 @@ class SliceViewer:
                 self.ax_section.plot(polyline[:, 0], polyline[:, 1], "-k")
 
         self.pos_text.set_text(
-            f"axis={self.axis}  pitch={self._fmt_length(self.pitch)}  "
+            f"axis={self.axis}  thickness={self._fmt_length(self.thickness)}  "
             f"slice={index + 1}/{len(self.heights)}  position={self._fmt_length(position)}"
         )
         self.fig.canvas.draw_idle()
@@ -302,7 +316,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("model", type=Path, help="input 3D model file (STL/OBJ/PLY/GLB, etc.)")
     parser.add_argument("--axis", choices=tuple(core.AXES), default="z", help="initial slicing axis")
     parser.add_argument(
-        "--pitch", type=float, default=None, help="initial slice spacing (default: ~30 slices across the model)"
+        "--thickness",
+        type=float,
+        default=None,
+        help='initial slice spacing (a.k.a. "slice thickness"); '
+        "default: a round number giving roughly 30 slices across the model",
     )
     parser.add_argument(
         "--units",
@@ -327,7 +345,7 @@ def main(argv: list[str] | None = None) -> None:
     viewer = SliceViewer(
         args.model,
         axis=args.axis,
-        pitch=args.pitch,
+        thickness=args.thickness,
         max_preview_faces=args.max_preview_faces,
         units=args.units,
     )

@@ -15,7 +15,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("model", type=Path, help="入力3Dモデルファイル (STL/OBJ/PLY/GLBなど)")
     parser.add_argument("--axis", choices=tuple(AXES), default="z", help="スライスする軸 (既定: z)")
-    parser.add_argument("--pitch", type=float, default=1.0, help="スライス間隔 [モデル単位] (既定: 1.0)")
+    parser.add_argument("--thickness", type=float, default=1.0, help="スライス間隔 [モデル単位] (既定: 1.0)")
     parser.add_argument("--start", type=float, default=None, help="開始位置 (既定: モデルの最小値)")
     parser.add_argument("--end", type=float, default=None, help="終了位置 (既定: モデルの最大値)")
     parser.add_argument("--outdir", type=Path, default=Path("slices"), help="出力先ディレクトリ (既定: ./slices)")
@@ -35,14 +35,14 @@ def main(argv: list[str] | None = None) -> None:
     if not mesh.is_watertight:
         print(f"警告: メッシュが閉じていません (is_watertight=False)。断面が欠ける場合があります: {args.model}")
 
-    heights = compute_heights(mesh, args.axis, args.pitch, args.start, args.end)
-    print(f"{len(heights)} 枚の断面を axis={args.axis}, pitch={args.pitch} で生成します")
+    heights = compute_heights(mesh, args.axis, args.thickness, args.start, args.end)
+    print(f"{len(heights)} 枚の断面を axis={args.axis}, thickness={args.thickness} で生成します")
 
     args.outdir.mkdir(parents=True, exist_ok=True)
     stem = args.model.stem
 
     n_ok = 0
-    for s in iter_slices(mesh, axis=args.axis, pitch=args.pitch, start=args.start, end=args.end):
+    for s in iter_slices(mesh, axis=args.axis, thickness=args.thickness, start=args.start, end=args.end):
         if s.is_empty:
             print(f"  [{s.index:04d}] {args.axis}={s.position:.4f}: 交差なし (スキップ)")
             continue

@@ -17,7 +17,7 @@ def main() -> None:
         HERE / "ammonite.glb",
         outdir=HERE / "output",
         axis="x",
-        pitch=0.007,
+        thickness=0.007,
         fmt="png",
     )
     print(f"{len(written)} 枚の断面を {HERE / 'output'} に出力しました")

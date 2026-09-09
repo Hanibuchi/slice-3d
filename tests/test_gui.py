@@ -34,12 +34,12 @@ def test_viewer_axis_change_recomputes_heights(tmp_path):
     assert n_before > 0  # z軸でもスライスが生成されていたことの確認
 
 
-def test_viewer_pitch_change_updates_slice_count(tmp_path):
+def test_viewer_thickness_change_updates_slice_count(tmp_path):
     model_path = make_sphere_file(tmp_path)
-    viewer = SliceViewer(model_path, axis="z", pitch=5.0)
+    viewer = SliceViewer(model_path, axis="z", thickness=5.0)
 
     n_coarse = len(viewer.heights)
-    viewer._on_pitch_submit("1.0")
+    viewer._on_thickness_submit("1.0")
     n_fine = len(viewer.heights)
 
     assert n_fine > n_coarse
@@ -47,7 +47,7 @@ def test_viewer_pitch_change_updates_slice_count(tmp_path):
 
 def test_viewer_3d_highlight_updates_with_slider(tmp_path):
     model_path = make_sphere_file(tmp_path)
-    viewer = SliceViewer(model_path, axis="z", pitch=2.5)
+    viewer = SliceViewer(model_path, axis="z", thickness=2.5)
 
     middle = len(viewer.heights) // 2
     viewer.slider.set_val(middle)
@@ -58,7 +58,7 @@ def test_viewer_3d_highlight_updates_with_slider(tmp_path):
 
 def test_viewer_save_writes_file(tmp_path):
     model_path = make_sphere_file(tmp_path)
-    viewer = SliceViewer(model_path, axis="z", pitch=2.5)
+    viewer = SliceViewer(model_path, axis="z", thickness=2.5)
 
     middle = len(viewer.heights) // 2
     viewer.slider.set_val(middle)
