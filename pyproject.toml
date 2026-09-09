@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "slice3d"
+version = "0.1.0"
+description = "3Dモデルを一定間隔でスライスして断面(輪郭)を出力するライブラリ/CLI"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "hanibuchi" }]
+keywords = ["3d", "mesh", "slicing", "cross-section", "trimesh", "cad", "stl"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "trimesh>=4.0.0",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "networkx>=3.0",
+    "shapely>=2.0",
+]
+
+[project.optional-dependencies]
+viz = ["matplotlib>=3.7"]
+dev = ["pytest>=7.0", "matplotlib>=3.7"]
+
+[project.scripts]
+slice3d = "slice3d.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/hanibuchi/slice3d"
+Issues = "https://github.com/hanibuchi/slice3d/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/slice3d"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
