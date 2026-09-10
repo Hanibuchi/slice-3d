@@ -1,16 +1,17 @@
-"""3Dモデルの断面・体積を確認するGUIビューア。
+"""GUI viewer for checking a 3D model's cross-sections and volume.
 
-専用ウィンドウを開き、3D表示でモデル全体と現在の切断位置を確認しながら、
-スライダーで断面を切り替えられる。軸(x/y/z)とスライス間隔(thickness)はウィンドウ上で変更できる。
+Opens a dedicated window where you can see the whole model and the current
+cutting position in a 3D view, and switch between cross-sections with a slider.
+The axis (x/y/z) and slice spacing (thickness) can be changed in the window.
 
-使い方::
+Usage::
 
     slice3d-gui model.stl
     slice3d-gui model.stl --axis x --thickness 0.01
-    slice3d-gui model.glb              # glTF/GLBは仕様上メートル単位なので自動で"m"表示
-    slice3d-gui model.stl --units mm   # STLなど単位不明な形式は明示的に指定
+    slice3d-gui model.glb              # glTF/GLB are meters by spec, so "m" is shown automatically
+    slice3d-gui model.stl --units mm   # for formats like STL with no known unit, specify it explicitly
 
-matplotlib が必要 (``pip install "slice3d[gui]"``)。
+Requires matplotlib (``pip install "slice3d[gui]"``).
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from . import core
 
 
 def _pick_cjk_font() -> str | None:
-    """環境にインストールされているCJK対応フォントを1つ選ぶ(文字化け防止用)。"""
+    """Pick one CJK-capable font installed on the system (to avoid mojibake)."""
     import matplotlib.font_manager as fm
 
     available = {f.name for f in fm.fontManager.ttflist}
@@ -44,13 +45,15 @@ if _cjk_font:
     plt.rcParams["font.family"] = [_cjk_font, "DejaVu Sans"]
 plt.rcParams["axes.unicode_minus"] = False
 
-# 3Dプレビューが重くならないよう、面数がこれを超えたらメッシュを簡略化して表示する。
-# mplot3dは面数に比例して回転・再描画が遅くなるため、数千面程度に抑えるとスムーズに動く。
-# (スライス計算自体は元メッシュの精度で行われ、この簡略化は3D表示にのみ影響する)
+# To keep the 3D preview from getting heavy, simplify the mesh once its face count
+# exceeds this. mplot3d gets slower to rotate/redraw roughly in proportion to face
+# count, so capping it at a few thousand faces keeps things smooth.
+# (Slice computation itself always uses the original mesh's full precision; this
+# simplification only affects the 3D preview.)
 _MAX_PREVIEW_FACES = 4_000
 
-# glTF/GLBは仕様上メートル単位と定められているため、既定値として表示に使う。
-# STL/OBJ/PLYなどは単位の情報を持たないファイル形式なので、既定は単位なし(空文字)。
+# glTF/GLB are meters by spec, so that's used as the default display unit.
+# Formats like STL/OBJ/PLY carry no unit information, so their default is no unit (empty string).
 _UNITS_BY_EXTENSION = {".glb": "m", ".gltf": "m"}
 
 _AXIS_NAMES = ("x", "y", "z")
@@ -62,7 +65,7 @@ def _default_units(model_path: Path) -> str:
 
 
 def _nice_thickness(extent: float, target_slices: int = 30) -> float:
-    """extentを約target_slices分割する、キリの良いthickness値(1/2/5 x 10^n)を選ぶ。"""
+    """Pick a round thickness value (1/2/5 x 10^n) that divides extent into about target_slices slices."""
     raw = extent / target_slices
     if raw <= 0:
         return max(raw, 1e-9)
@@ -75,7 +78,7 @@ def _nice_thickness(extent: float, target_slices: int = 30) -> float:
 
 
 class SliceViewer:
-    """3D表示 + スライダーで断面を切り替えながら確認するmatplotlibウィンドウ。"""
+    """A matplotlib window combining a 3D view with a slider to browse cross-sections."""
 
     def __init__(
         self,
@@ -93,7 +96,7 @@ class SliceViewer:
         self.max_preview_faces = max_preview_faces
         self.units = _default_units(self.model_path) if units is None else units
         if fmt not in _FORMATS:
-            raise ValueError(f"fmt は {list(_FORMATS)} のいずれかである必要があります: {fmt!r}")
+            raise ValueError(f"fmt must be one of {list(_FORMATS)}: {fmt!r}")
         self.format = fmt
         self._format_buttons: dict[str, Button] = {}
 
@@ -110,8 +113,8 @@ class SliceViewer:
         self._build_ui()
         self._recompute_slices()
 
-    # ---- 表示用フォーマット ----
-    # 有効数字3桁に丸める(生の浮動小数点をそのまま出すと桁数が多すぎて読みにくいため)。
+    # ---- display formatting ----
+    # Round to 3 significant figures (a raw float has too many digits to read comfortably).
     def _fmt_length(self, value: float) -> str:
         suffix = f" {self.units}" if self.units else ""
         return f"{value:.3g}{suffix}"
@@ -120,20 +123,21 @@ class SliceViewer:
         suffix = f" {self.units}³" if self.units else ""
         return f"{value:.3g}{suffix}"
 
-    # ---- データ ----
+    # ---- data ----
     def _recompute_slices(self) -> None:
         self.heights = core.compute_heights(self.mesh, self.axis, self.thickness)
         self._rebuild_slider()
 
     def _section_at(self, index: int):
-        """指定インデックスの断面を計算する。(path_2d, discrete_3d) を返す。
+        """Compute the cross-section at the given index. Returns (path_2d, discrete_3d).
 
-        path_2d は2D平面上のPath2D(交差なしならNone)、discrete_3d は
-        3Dプレビュー用のポリライン(Nx3配列)のリスト。
+        path_2d is the Path2D on the 2D plane (None if there's no intersection);
+        discrete_3d is a list of polylines (Nx3 arrays) for the 3D preview.
 
-        polylines()(core.pyのentityベースの抽出)を使うことで、非watertightな
-        メッシュの断面のように閉じていない(開いた)線も欠落なく拾う。
-        ``section.discrete`` は閉じたループしか返さないため使わない。
+        Using polylines() (the entity-based extraction from core.py) picks up every
+        line without loss, including open (non-closed) lines such as those found in
+        cross-sections of a non-watertight mesh. ``section.discrete`` is avoided
+        because it only returns closed loops.
         """
         axis_idx = core.AXES[self.axis]
         normal = [0.0, 0.0, 0.0]
@@ -160,7 +164,7 @@ class SliceViewer:
             corners[k, other[1]] = c
         return corners
 
-    # ---- UI構築 ----
+    # ---- build UI ----
     def _build_ui(self) -> None:
         self.fig = plt.figure(figsize=(11, 9))
         try:
@@ -186,9 +190,9 @@ class SliceViewer:
             0.03, 0.92, "Full model (red = current slice plane)", fontsize=10, va="top"
         )
 
-        # ラジオボタンは既定だと丸のサイズ・クリック領域が小さく押しづらいため、
-        # 専用エリアを広めに取った上で radio_props/label_props でマーカーと
-        # フォントを拡大している。
+        # The radio buttons' default marker size and click target are too small to
+        # hit comfortably, so we give them a wider dedicated area and enlarge the
+        # marker and font via radio_props/label_props.
         ax_radio = self.fig.add_axes((0.01, 0.02, 0.13, 0.27))
         ax_radio.set_title("Axis", fontsize=11)
         self.radio = RadioButtons(
@@ -201,8 +205,8 @@ class SliceViewer:
         self.radio.on_clicked(self._on_axis_change)
 
         self.ax_slider = self.fig.add_axes((0.19, 0.25, 0.71, 0.05))
-        # スライダーのつまみも既定サイズだと掴みづらいので大きくする
-        # (トラック自体はどこをクリックしてもその位置へ移動できる)。
+        # The slider handle is also hard to grab at its default size, so enlarge it
+        # (the track itself can already be clicked anywhere to jump to that position).
         self._slider_handle_style = {"size": 18}
 
         thickness_label = f"Thickness ({self.units})  " if self.units else "Thickness  "
@@ -235,21 +239,21 @@ class SliceViewer:
         self._refresh_format_buttons()
 
     def _preview_mesh(self):
-        """3D表示専用の軽量化されたメッシュを返す(スライス計算には使わない)。"""
+        """Return a lightweight mesh for the 3D preview only (not used for slice computation)."""
         mesh = self.mesh
         if len(mesh.faces) <= self.max_preview_faces:
             return mesh
         try:
             return mesh.simplify_quadric_decimation(face_count=self.max_preview_faces)
         except Exception:
-            # fast_simplification が無い環境などへのフォールバック: 単純間引き。
-            # 形状の見え方は粗くなるが、表示が固まるよりはよい。
+            # Fallback for environments without fast_simplification, etc.: simple
+            # decimation. The shape looks coarser, but that beats a frozen display.
             step = math.ceil(len(mesh.faces) / self.max_preview_faces)
             faces = mesh.faces[::step]
             return trimesh.Trimesh(vertices=mesh.vertices, faces=faces, process=False)
 
     def _draw_static_mesh(self) -> None:
-        """モデル全体を半透明の3Dサーフェスとして一度だけ描画する(スライス操作では再描画しない)。"""
+        """Draw the whole model once as a semi-transparent 3D surface (not redrawn on slice operations)."""
         preview = self._preview_mesh()
         tri = preview.vertices[preview.faces]
 
@@ -302,13 +306,13 @@ class SliceViewer:
         self.slider.on_changed(lambda val: self._show_index(int(val)))
         self._show_index(current)
 
-    # ---- コールバック ----
+    # ---- callbacks ----
     def _on_axis_change(self, label: str) -> None:
         self.axis = label
         self.thickness = _nice_thickness(self.mesh.extents[core.AXES[label]])
         self.thickness_box.set_val(f"{self.thickness:g}")
         self._recompute_slices()
-        self._refresh_format_buttons()  # Save Allボタンのラベルに軸名が含まれるため更新
+        self._refresh_format_buttons()  # refresh since the Save All button label includes the axis name
         self.fig.canvas.draw_idle()
 
     def _on_thickness_submit(self, text: str) -> None:
@@ -328,7 +332,7 @@ class SliceViewer:
         self.fig.canvas.draw_idle()
 
     def _refresh_format_buttons(self) -> None:
-        """選択中のフォーマットのボタンをハイライトし、保存ボタンのラベルを更新する。"""
+        """Highlight the currently selected format's button and update the save buttons' labels."""
         for fmt, button in self._format_buttons.items():
             selected = fmt == self.format
             button.color = "lightblue" if selected else "0.85"
@@ -350,8 +354,8 @@ class SliceViewer:
             return
         outdir = self._outdir()
         outpath = outdir / f"{self.model_path.stem}_{self.axis}{index:04d}_{self.heights[index]:.4f}.{self.format}"
-        # polylines_3d/axis/bounds を渡すことで、保存画像(png)の表示範囲を
-        # モデル全体のバウンディングボックスに固定する(断面ごとに縮尺がバラつかない)。
+        # Passing polylines_3d/axis/bounds fixes the saved image's (PNG) view range
+        # to the whole model's bounding box, so the scale doesn't vary between sections.
         core.save_section(
             path_2d, outpath, self.format,
             polylines_3d=discrete_3d, axis=self.axis, bounds=self.mesh.bounds,
@@ -359,7 +363,7 @@ class SliceViewer:
         print(f"Saved: {outpath}")
 
     def _on_save_all(self, event) -> None:
-        """現在の軸・thickness設定で全スライスを一括保存する(交差しない位置はスキップ)。"""
+        """Save all slices in one go using the current axis/thickness settings (positions with no intersection are skipped)."""
         outdir = self._outdir()
         written = core.slice_file(
             self.model_path,
@@ -373,7 +377,7 @@ class SliceViewer:
             f"(axis={self.axis}, thickness={self._fmt_length(self.thickness)}, format={self.format}) to {outdir}"
         )
 
-    # ---- 描画 ----
+    # ---- rendering ----
     def _show_index(self, index: int) -> None:
         index = max(0, min(index, len(self.heights) - 1))
         position = self.heights[index]
@@ -381,11 +385,14 @@ class SliceViewer:
 
         self._update_3d_highlight(index, discrete_3d)
 
-        # 断面図は3Dハイライトと同じワールド座標(discrete_3d)をそのまま2軸に投影して描く。
-        # path_2d(trimeshが断面ごとに独自に選ぶローカル2D座標系)を使うと、断面の形だけで
-        # 自動スケーリングされてしまい、小さな断片がパネルいっぱいに拡大されて3D表示と
-        # 対応が取れなくなる(特にthin方向の軸でスライスすると顕著)。
-        # ここではモデル全体のバウンディングボックスに表示範囲を固定し、常に同じ縮尺で見せる。
+        # The cross-section panel is drawn by projecting the same world coordinates
+        # (discrete_3d) used for the 3D highlight onto the two remaining axes.
+        # Using path_2d (the local 2D coordinate system trimesh picks per section)
+        # instead would auto-scale to the section's shape alone, blowing small
+        # fragments up to fill the panel and losing correspondence with the 3D view
+        # (most noticeable when slicing along a thin axis).
+        # Here the view range is fixed to the whole model's bounding box instead,
+        # so the scale is always consistent.
         axis_idx = core.AXES[self.axis]
         other = [i for i in range(3) if i != axis_idx]
         xlabel, ylabel = _AXIS_NAMES[other[0]], _AXIS_NAMES[other[1]]

@@ -1,6 +1,6 @@
-"""ライブラリ使用例: アンモナイトのGLBモデルの体積を計算する。
+"""Library usage example: compute the volume of an ammonite GLB model.
 
-実行方法::
+Run with::
 
     python examples/volume_ammonite.py
 """
@@ -17,27 +17,27 @@ HERE = Path(__file__).parent
 def main() -> None:
     mesh = slice3d.load_mesh(HERE / "ammonite.glb")
 
-    print(f"頂点数: {len(mesh.vertices)}")
-    print(f"面数: {len(mesh.faces)}")
-    print(f"バウンディングボックス(m): {mesh.extents}")
+    print(f"Vertices: {len(mesh.vertices)}")
+    print(f"Faces: {len(mesh.faces)}")
+    print(f"Bounding box (m): {mesh.extents}")
 
     if not mesh.is_watertight:
-        print("警告: メッシュが閉じていません (is_watertight=False)。穴埋め・法線修正を試みます…")
+        print("Warning: mesh is not closed (is_watertight=False). Attempting to fill holes and fix normals…")
         mesh.merge_vertices()
         mesh.update_faces(mesh.unique_faces())
         mesh.remove_unreferenced_vertices()
         trimesh.repair.fix_normals(mesh)
         trimesh.repair.fill_holes(mesh)
         if mesh.is_watertight:
-            print("修復に成功しました。")
+            print("Repair succeeded.")
         else:
-            print("修復後も完全には閉じていません。以下の体積は近似値です。")
+            print("Still not fully closed after repair. The volume below is an approximation.")
 
     volume_m3 = abs(mesh.volume)
-    print(f"体積: {volume_m3:.6e} m^3 ({volume_m3 * 1e6:.4f} cm^3)")
+    print(f"Volume: {volume_m3:.6e} m^3 ({volume_m3 * 1e6:.4f} cm^3)")
 
     hull_volume_m3 = mesh.convex_hull.volume
-    print(f"(参考) 凸包の体積: {hull_volume_m3:.6e} m^3 ({hull_volume_m3 * 1e6:.4f} cm^3)")
+    print(f"(reference) Convex hull volume: {hull_volume_m3:.6e} m^3 ({hull_volume_m3 * 1e6:.4f} cm^3)")
 
 
 if __name__ == "__main__":

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "slice3d"
-version = "0.1.0"
-description = "3Dモデルを一定間隔でスライスして断面(輪郭)を出力するライブラリ/CLI"
+version = "0.1.1"
+description = "Library/CLI that slices a 3D model at regular intervals and exports the cross-sections (outlines)"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
@@ -36,11 +36,12 @@ dependencies = [
 
 [project.optional-dependencies]
 viz = ["matplotlib>=3.7"]
-# gui.py は RadioButtons/Slider の radio_props・label_props・handle_style
-# (ウィジェットのクリック領域拡大に使用) に依存するため matplotlib>=3.8 が必要。
-# matplotlib>=3.11 は TextBox の resize_event ハンドラが `_call_with_reparented_event`
-# でラップされ、ResizeEvent に inaxes 属性が無いため AttributeError で落ちる回帰バグがある
-# (thickness入力欄がTextBoxなのでウィンドウリサイズ時に必ず再現する)。修正版が出るまで除外する。
+# gui.py needs matplotlib>=3.8 because it relies on RadioButtons/Slider's
+# radio_props, label_props, and handle_style (used to enlarge widget click targets).
+# matplotlib>=3.11 has a regression where TextBox's resize_event handler gets
+# wrapped by `_call_with_reparented_event`, and ResizeEvent lacks an `inaxes`
+# attribute, causing an AttributeError (the thickness field is a TextBox, so this
+# always reproduces on window resize). Excluded until a fixed release is out.
 gui = ["matplotlib>=3.8,!=3.11.*", "fast-simplification>=0.1.7"]
 dev = ["pytest>=7.0", "matplotlib>=3.8,!=3.11.*", "fast-simplification>=0.1.7"]
 

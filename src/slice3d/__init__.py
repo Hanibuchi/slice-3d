@@ -1,6 +1,6 @@
-"""slice3d: 3Dモデルを一定間隔でスライスして断面を出力するライブラリ。
+"""slice3d: a library that slices a 3D model at regular intervals and exports the cross-sections.
 
-最小の使用例::
+Minimal usage::
 
     import slice3d
 
@@ -9,7 +9,7 @@
         if not s.is_empty:
             slice3d.save_section(s.path_2d, f"out/{s.index:04d}.svg")
 
-または一括処理::
+Or in one call::
 
     import slice3d
 
@@ -29,7 +29,7 @@ from .core import (
     slice_mesh,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "AXES",

@@ -1,4 +1,4 @@
-"""3Dメッシュを一定間隔でスライスし、断面(2Dパス)を得るためのコア機能。"""
+"""Core functionality for slicing a 3D mesh at regular intervals and obtaining cross-sections (2D paths)."""
 
 from __future__ import annotations
 
@@ -27,15 +27,16 @@ AXES = {"x": 0, "y": 1, "z": 2}
 
 @dataclass(frozen=True)
 class Slice:
-    """1枚の断面を表す。"""
+    """Represents a single cross-section."""
 
     index: int
     axis: str
     position: float
     path_2d: "trimesh.path.Path2D | None"
-    # 断面のワールド座標での点列(Nx3配列のリスト)。png保存時に実寸スケールを
-    # 揃えるために使う(path_2d はtrimeshが断面ごとに選ぶローカル2D座標系のため、
-    # 複数断面間でスケールが揃わない)。
+    # The cross-section's polylines in world coordinates (a list of Nx3 arrays). Used to
+    # keep a consistent real-world scale when saving PNGs (path_2d uses a local 2D
+    # coordinate system that trimesh picks per section, so scale isn't consistent
+    # across multiple sections).
     polylines_3d: list = field(default_factory=list)
 
     @property
@@ -44,13 +45,13 @@ class Slice:
 
 
 def load_mesh(path: str | Path) -> trimesh.Trimesh:
-    """3Dモデルファイルを読み込み、単一の Trimesh として返す。
+    """Load a 3D model file and return it as a single Trimesh.
 
-    STL / OBJ / PLY / GLB / GLTF など、trimesh が対応する形式を扱える。
+    Supports any format trimesh can handle, e.g. STL / OBJ / PLY / GLB / GLTF.
     """
     mesh = trimesh.load(path, force="mesh")
     if not isinstance(mesh, trimesh.Trimesh):
-        raise TypeError(f"単一のメッシュとして読み込めませんでした: {path}")
+        raise TypeError(f"Could not load as a single mesh: {path}")
     return mesh
 
 
@@ -61,18 +62,18 @@ def compute_heights(
     start: float | None = None,
     end: float | None = None,
 ) -> np.ndarray:
-    """指定した軸に沿って、一定間隔(thickness)でスライスする位置の配列を計算する。"""
+    """Compute the array of slice positions at a regular interval (thickness) along the given axis."""
     if axis not in AXES:
-        raise ValueError(f"axis は {list(AXES)} のいずれかである必要があります: {axis!r}")
+        raise ValueError(f"axis must be one of {list(AXES)}: {axis!r}")
     if thickness <= 0:
-        raise ValueError("thickness は正の値である必要があります")
+        raise ValueError("thickness must be a positive value")
 
     axis_idx = AXES[axis]
     bounds_min, bounds_max = mesh.bounds[:, axis_idx]
     lo = bounds_min if start is None else start
     hi = bounds_max if end is None else end
     if hi <= lo:
-        raise ValueError(f"終了位置は開始位置より大きい必要があります (start={lo}, end={hi})")
+        raise ValueError(f"end must be greater than start (start={lo}, end={hi})")
 
     n = int(np.floor((hi - lo) / thickness)) + 1
     return lo + np.arange(n) * thickness
@@ -85,9 +86,10 @@ def iter_slices(
     start: float | None = None,
     end: float | None = None,
 ) -> Iterator[Slice]:
-    """メッシュを一定間隔でスライスし、Sliceオブジェクトを1枚ずつ生成する。
+    """Slice the mesh at regular intervals, yielding one Slice object at a time.
 
-    交差しない位置では ``path_2d=None`` の Slice を返す(呼び出し側でスキップ判定できる)。
+    At positions with no intersection, a Slice with ``path_2d=None`` is yielded
+    (the caller can check this to skip it).
     """
     axis_idx = AXES[axis]
     heights = compute_heights(mesh, axis, thickness, start, end)
@@ -120,17 +122,17 @@ def slice_mesh(
     start: float | None = None,
     end: float | None = None,
 ) -> list[Slice]:
-    """iter_slices の結果をリストとして返す。"""
+    """Return the result of iter_slices as a list."""
     return list(iter_slices(mesh, axis=axis, thickness=thickness, start=start, end=end))
 
 
 def polylines(path) -> list[np.ndarray]:
-    """Path2D/Path3D の全エンティティを点列(Nx2 または Nx3 配列)のリストとして取り出す。
+    """Extract every entity of a Path2D/Path3D as a list of polylines (Nx2 or Nx3 arrays).
 
-    ``path.discrete`` は閉じたループしか返さないため、非watertightなメッシュの
-    断面のように閉じていない(開いた)線が含まれていると取りこぼしてしまう。
-    この関数は entity 単位で ``entity.discrete(path.vertices)`` を呼ぶことで、
-    開いた線も含めてすべての線分を取得する。
+    ``path.discrete`` only returns closed loops, so it drops open (non-closed) lines,
+    such as those that occur in cross-sections of a non-watertight mesh. This function
+    instead calls ``entity.discrete(path.vertices)`` per entity, so it picks up every
+    segment, including open lines.
     """
     return [entity.discrete(path.vertices) for entity in path.entities]
 
@@ -144,15 +146,15 @@ def save_section(
     axis: str | None = None,
     bounds: "np.ndarray | None" = None,
 ) -> Path:
-    """1枚の断面 (Path2D) をファイルへ保存する。
+    """Save a single cross-section (Path2D) to a file.
 
-    fmt: "svg" | "dxf" | "png" | "csv"。省略時は outpath の拡張子から判定する。
+    fmt: "svg" | "dxf" | "png" | "csv". If omitted, it's inferred from outpath's extension.
 
-    fmt="png" で保存する場合は、``polylines_3d``(ワールド座標の点列。
-    ``Slice.polylines_3d`` を渡す)、``axis``、``bounds``(``mesh.bounds``)を
-    指定すると、画像の表示範囲をモデル全体のバウンディングボックスに固定できる。
-    これらを省略すると各断面の内容だけに自動フィットして保存されるため、
-    断面ごとに画像の縮尺(見た目の大きさ)がバラバラになってしまう点に注意。
+    When saving as fmt="png", passing ``polylines_3d`` (the world-coordinate polylines,
+    i.e. ``Slice.polylines_3d``), ``axis``, and ``bounds`` (``mesh.bounds``) fixes the
+    image's view range to the whole model's bounding box. If these are omitted, the
+    image is auto-fit to that section's content alone, so the apparent scale ends up
+    inconsistent from one section to another.
     """
     outpath = Path(outpath)
     fmt = (fmt or outpath.suffix.lstrip(".")).lower()
@@ -168,9 +170,10 @@ def save_section(
 
         fig, ax = plt.subplots()
         if polylines_3d is not None and axis is not None and bounds is not None:
-            # ワールド座標をそのまま2軸に投影し、表示範囲をモデル全体のバウンディング
-            # ボックスに固定する。これにより、断面の大きさに関わらずどの画像も
-            # 元モデルに対する実際の縮尺(比率)を保って保存される。
+            # Project world coordinates onto the two remaining axes as-is, and fix
+            # the view range to the whole model's bounding box. This way, every
+            # image is saved at the real scale relative to the original model,
+            # regardless of how large that particular section is.
             axis_idx = AXES[axis]
             other = [i for i in range(3) if i != axis_idx]
             for polyline in polylines_3d:
@@ -181,7 +184,7 @@ def save_section(
             ax.axis("off")
             fig.savefig(outpath, dpi=150)
         else:
-            # 従来どおり: 断面の内容だけに自動フィットする(スケールは断面ごとに異なる)。
+            # Fall back to auto-fitting the section's content alone (scale varies per section).
             for polyline in polylines(path_2d):
                 ax.plot(polyline[:, 0], polyline[:, 1], "-k")
             ax.set_aspect("equal")
@@ -195,21 +198,21 @@ def save_section(
                 lines.append(f"{i},{x},{y}")
         outpath.write_text("\n".join(lines))
     else:
-        raise ValueError(f"未対応の出力形式です: {fmt!r} (対応形式: svg, dxf, png, csv)")
+        raise ValueError(f"Unsupported output format: {fmt!r} (supported: svg, dxf, png, csv)")
 
     return outpath
 
 
 def print_volume(mesh: trimesh.Trimesh) -> float:
-    """メッシュの体積を標準出力に表示し、その値を返す。
+    """Print the mesh's volume to stdout and return the value.
 
-    メッシュが水密(watertight)でない場合、体積の計算結果が不正確になりうるため警告を表示する。
+    If the mesh is not watertight, prints a warning since the computed volume may be inaccurate.
     """
     if not mesh.is_watertight:
-        print("警告: メッシュが水密でないため、体積の計算結果は不正確な可能性があります")
+        print("Warning: mesh is not watertight, so the computed volume may be inaccurate")
 
     volume = float(mesh.volume)
-    print(f"体積: {volume}")
+    print(f"Volume: {volume}")
     return volume
 
 
@@ -222,9 +225,9 @@ def slice_file(
     end: float | None = None,
     fmt: str = "svg",
 ) -> list[Path]:
-    """3Dモデルファイルを読み込み、スライスして outdir へ一括出力する。
+    """Load a 3D model file, slice it, and write all slices to outdir.
 
-    戻り値は書き出したファイルパスのリスト(交差しないスライスはスキップされる)。
+    Returns the list of written file paths (slices with no intersection are skipped).
     """
     model_path = Path(model_path)
     outdir = Path(outdir)

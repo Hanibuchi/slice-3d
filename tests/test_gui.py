@@ -36,7 +36,7 @@ def test_viewer_axis_change_recomputes_heights(tmp_path):
 
     assert viewer.axis == "x"
     assert len(viewer.heights) > 0
-    assert n_before > 0  # z軸でもスライスが生成されていたことの確認
+    assert n_before > 0  # confirm slices were also generated for the z axis
 
 
 def test_viewer_thickness_change_updates_slice_count(tmp_path):
@@ -62,9 +62,9 @@ def test_viewer_3d_highlight_updates_with_slider(tmp_path):
 
 
 def test_viewer_section_panel_matches_3d_scale(tmp_path):
-    """断面図がpath_2dの自動スケーリングでズームされず、常にモデル全体の
-    バウンディングボックスに固定表示されることを確認する(3D表示との対応が
-    取れなくなる回帰を防ぐ)。"""
+    """Verify the cross-section panel isn't zoomed by path_2d's auto-scaling and
+    always displays fixed to the whole model's bounding box (prevents a regression
+    where it loses correspondence with the 3D view)."""
     model_path = make_sphere_file(tmp_path)
     viewer = SliceViewer(model_path, axis="z", thickness=2.5)
 
@@ -76,9 +76,10 @@ def test_viewer_section_panel_matches_3d_scale(tmp_path):
 
 
 def test_viewer_section_uses_world_coordinates(tmp_path):
-    """断面図に描く座標が、3Dハイライト(discrete_3d)と同じワールド座標系の
-    値であることを確認する(trimeshの断面ごとに異なるローカル2D座標系を
-    そのまま使うと、3D側と対応しない見た目になる)。"""
+    """Verify the coordinates drawn in the cross-section panel are the same
+    world-coordinate values as the 3D highlight (discrete_3d) (using trimesh's
+    per-section local 2D coordinate system as-is would look inconsistent with
+    the 3D view)."""
     model_path = make_sphere_file(tmp_path)
     viewer = SliceViewer(model_path, axis="x", thickness=2.5)
 
@@ -87,24 +88,25 @@ def test_viewer_section_uses_world_coordinates(tmp_path):
     _path_2d, discrete_3d = viewer._section_at(middle)
 
     lines = [ln for ln in viewer.ax_section.get_lines()]
-    assert lines, "断面が描画されていません"
+    assert lines, "No cross-section was drawn"
     plotted_x = lines[0].get_xdata()
-    # axis="x" のとき、断面図の横軸はワールドのy座標に対応する。
+    # When axis="x", the cross-section panel's horizontal axis corresponds to the world y coordinate.
     assert plotted_x.min() == pytest.approx(discrete_3d[0][:, 1].min())
     assert plotted_x.max() == pytest.approx(discrete_3d[0][:, 1].max())
 
 
 def test_viewer_shows_open_cross_section():
-    """ammonite.glb の y=0.15〜0.22付近は非watertightで断面が閉じたループに
-    ならないため、以前は3Dハイライトには見えるのに断面図には何も描かれない
-    (discrete_3d が空になる)不具合があった。その回帰テスト。"""
+    """Around y=0.15-0.22 of ammonite.glb, the mesh is non-watertight and the
+    cross-section doesn't form a closed loop, which used to cause a bug where the
+    3D highlight showed something but the cross-section panel drew nothing
+    (discrete_3d ended up empty). Regression test for that."""
     viewer = SliceViewer(AMMONITE_PATH, axis="y", thickness=0.01)
 
     index = int(round((0.18 - viewer.heights[0]) / viewer.thickness))
     viewer.slider.set_val(index)
 
     _path_2d, discrete_3d = viewer._section_at(index)
-    assert discrete_3d, "y=0.18付近の断面が空になっています(開いた線の欠落)"
+    assert discrete_3d, "Cross-section near y=0.18 is empty (an open line was dropped)"
     assert len(viewer.ax_section.get_lines()) > 0
 
 
@@ -175,9 +177,10 @@ def test_viewer_save_all_writes_every_nonempty_slice(tmp_path):
 
 
 def test_viewer_save_all_png_share_consistent_scale(tmp_path):
-    """保存されるPNGが、断面の大きさに関わらず全て同じピクセルサイズ(=元モデルに
-    対する同じ縮尺)で保存されることを確認する回帰テスト。球のz軸スライスは
-    赤道付近で大きく、極付近で小さくなるため縮尺のブレを検出しやすい。"""
+    """Regression test verifying saved PNGs are all the same pixel size (i.e. the
+    same scale relative to the original model) regardless of each cross-section's
+    size. A sphere's z-axis slices are large near the equator and small near the
+    poles, making scale drift easy to detect."""
     import matplotlib.image as mpimg
 
     model_path = make_sphere_file(tmp_path)
@@ -190,12 +193,12 @@ def test_viewer_save_all_png_share_consistent_scale(tmp_path):
     saved = list(outdir.iterdir())
     assert len(saved) >= 3
     shapes = {mpimg.imread(p).shape[:2] for p in saved}
-    assert len(shapes) == 1, f"画像サイズが断面ごとに異なっています: {shapes}"
+    assert len(shapes) == 1, f"Image size differs between sections: {shapes}"
 
 
 def test_viewer_save_all_covers_open_cross_sections():
-    """save all が、開いた断面(閉じたループにならない位置)も欠落なく
-    保存することを確認する回帰テスト。"""
+    """Regression test verifying save all doesn't drop open cross-sections
+    (positions that don't form a closed loop)."""
     outdir_marker = AMMONITE_PATH.parent / "slices_gui"
     if outdir_marker.exists():
         for p in outdir_marker.iterdir():
@@ -205,7 +208,7 @@ def test_viewer_save_all_covers_open_cross_sections():
     try:
         viewer._on_save_all(None)
         saved_names = {p.name for p in outdir_marker.iterdir()}
-        # y=0.18付近(開いた断面)のファイルが含まれていること
+        # the file for y=0.18 (an open cross-section) must be included
         assert any("0.1800" in name or "0.18" in name for name in saved_names)
     finally:
         if outdir_marker.exists():

@@ -1,6 +1,6 @@
-"""ライブラリ使用例: アンモナイトのGLBモデルをX軸方向にスライスする。
+"""Library usage example: slice an ammonite GLB model along the X axis.
 
-実行方法::
+Run with::
 
     python examples/slice_ammonite.py
 """
@@ -20,7 +20,7 @@ def main() -> None:
         thickness=0.007,
         fmt="png",
     )
-    print(f"{len(written)} 枚の断面を {HERE / 'output'} に出力しました")
+    print(f"Wrote {len(written)} cross-sections to {HERE / 'output'}")
 
 
 if __name__ == "__main__":

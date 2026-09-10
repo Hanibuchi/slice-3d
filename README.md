@@ -1,88 +1,88 @@
 # slice3d
 
-3Dモデル(STL / OBJ / PLY / GLB / GLTF など)を一定間隔でスライスし、断面(輪郭)を SVG / DXF / PNG / CSV として出力するPythonライブラリ・CLIです。[trimesh](https://github.com/mikedh/trimesh) をベースにしています。
+A Python library/CLI that slices a 3D model (STL / OBJ / PLY / GLB / GLTF, etc.) at regular intervals and exports the cross-sections (outlines) as SVG / DXF / PNG / CSV. Built on [trimesh](https://github.com/mikedh/trimesh).
 
-アンモナイトの化石モデルをX軸方向にスライスした例:
+An example slicing an ammonite fossil model along the X axis:
 
-![スライス一覧](docs/assets/ammonite_slices_grid.png)
+![Slice grid](docs/assets/ammonite_slices_grid.png)
 
-中心付近の断面(渦巻き状の房室がきれいに現れる):
+A cross-section near the center (showing the spiral chambers clearly):
 
-![中心断面](docs/assets/ammonite_center_slice.png)
+![Center slice](docs/assets/ammonite_center_slice.png)
 
-## インストール
+## Installation
 
 ```bash
 pip install slice3d
 
-# PNG出力を使う場合(matplotlibが必要)
+# For PNG output (requires matplotlib)
 pip install "slice3d[viz]"
 ```
 
-開発時はこのリポジトリを editable インストールしてください。
+For development, install this repository as an editable install.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-## CLIとして使う
+## Using the CLI
 
 ```bash
 slice3d model.stl --axis z --thickness 2.0 --outdir slices --format svg
 ```
 
-| オプション | 説明 | 既定値 |
+| Option | Description | Default |
 | --- | --- | --- |
-| `--axis {x,y,z}` | スライスする軸 | `z` |
-| `--thickness` | スライス間隔(モデル単位) | `1.0` |
-| `--start` / `--end` | スライス範囲(省略時はモデルのバウンディングボックス全体) | なし |
-| `--outdir` | 出力先ディレクトリ | `./slices` |
-| `--format {svg,dxf,png,csv}` | 断面の出力形式 | `svg` |
+| `--axis {x,y,z}` | Axis to slice along | `z` |
+| `--thickness` | Slice spacing (model units) | `1.0` |
+| `--start` / `--end` | Slice range (defaults to the model's whole bounding box) | none |
+| `--outdir` | Output directory | `./slices` |
+| `--format {svg,dxf,png,csv}` | Cross-section output format | `svg` |
 
-PNG出力(CLI/`slice_file`/GUIいずれも共通)は、断面ごとの内容に自動フィットするのではなく、元モデル全体のバウンディングボックスを基準に表示範囲を固定して保存する。そのため、同じスライス処理で出力した画像はすべて同じピクセルサイズ・同じ縮尺になり、小さな断面ほど小さく、大きな断面ほど大きく写る(元モデルに対する実際の大きさの比率がそのまま画像に反映される)。
+PNG output (shared by the CLI, `slice_file`, and the GUI) is saved with a fixed view range based on the original model's whole bounding box, rather than auto-fitting to each cross-section's content. As a result, every image from the same slicing run has the same pixel size and scale — smaller cross-sections appear smaller and larger ones appear larger, preserving their actual size ratio relative to the original model.
 
-交差しない位置のスライスは自動的にスキップされます。
+Slices with no intersection are skipped automatically.
 
-## GUIビューア
+## GUI viewer
 
-体積・スライス位置を確認しながら、軸やスライス間隔(thickness)をその場で変更できる専用ウィンドウを開きます。
+Opens a dedicated window where you can check the volume and slice position, and change the axis or slice spacing (thickness) on the fly.
 
 ```bash
 pip install "slice3d[gui]"
 slice3d-gui model.stl
 slice3d-gui model.stl --axis x --thickness 0.01
-slice3d-gui model.glb              # glTF/GLBは仕様上メートル単位なので自動で"m"表示
-slice3d-gui model.stl --units mm   # STLなど単位不明な形式は明示的に指定
-slice3d-gui model.stl --format png # Save系ボタンの初期フォーマット(既定: svg)
+slice3d-gui model.glb              # glTF/GLB are meters by spec, so "m" is shown automatically
+slice3d-gui model.stl --units mm   # for formats like STL with no known unit, specify it explicitly
+slice3d-gui model.stl --format png # initial format for the Save buttons (default: svg)
 ```
 
-![GUIビューア](docs/assets/gui_screenshot.png)
+![GUI viewer](docs/assets/gui_screenshot.png)
 
-ウィンドウ内の表示は(体積・軸・数値など)すべて英語で統一しています。
+Everything in the window (volume, axis, numbers, etc.) is displayed in English.
 
-- ウィンドウ上部にモデル名・体積(`mesh.volume`、非watertightなら近似値である旨も表示)
-- 左側にモデル全体を半透明の3D表示。現在の切断位置を赤い平面と断面の輪郭線で重ねて表示するので、どこをどの向きで切っているか一目で分かる
-- 右側にその断面(切断面を真上から見た2D形状)をリアルタイム表示
-- スライダーでスライス位置(index / position)を切り替え
-- `Axis` ラジオボタンでスライス軸を切り替え(切り替え時はthicknessが軸の全長に応じてキリの良い値(1/2/5 × 10ⁿ、約30分割相当)に自動再設定される)
-- `Thickness` テキストボックスで間隔を指定して Enter → 断面数が再計算される
-- 体積・thickness・positionの表示には単位が付く。glTF/GLB(`.glb` / `.gltf`)は仕様上メートル単位と定められているため自動で`m`が付き、STL/OBJ/PLYなど単位情報を持たない形式は既定で単位なし
-  - `--units`(例: `mm`, `cm`)で表示単位を明示指定できる。`--units ""` で単位表示を消すことも可能
-- `Format` ボタン(SVG/PNG/DXF/CSV)で保存形式を選択。選択中の形式はハイライトされ、Saveボタンのラベルにも反映される
-- `Save Current Slice` ボタンで現在表示中の断面を1枚保存
-- `Save All Slices Along <軸>-Axis` ボタンで、現在の軸・thickness設定のまま全断面を一括保存(交差しない位置は自動的にスキップ)
-- 保存先はどちらも `<モデルと同じディレクトリ>/slices_gui/`
+- The model name and volume (`mesh.volume`; noted as approximate if non-watertight) are shown at the top of the window
+- A semi-transparent 3D view of the whole model on the left, with the current cutting position overlaid as a red plane and the cross-section's outline, so you can see at a glance where and in which orientation it's being cut
+- The cross-section itself (the cut viewed straight-on, in 2D) shown live on the right
+- A slider to switch the slice position (index / position)
+- `Axis` radio buttons to switch the slicing axis (switching auto-resets thickness to a round value based on the axis's full extent — 1/2/5 × 10ⁿ, roughly 30 divisions)
+- A `Thickness` text box to set the spacing and press Enter → the number of cross-sections is recalculated
+- Volume, thickness, and position values are shown with a unit. glTF/GLB (`.glb` / `.gltf`) are meters by spec, so `m` is added automatically; formats like STL/OBJ/PLY carry no unit information, so no unit is shown by default
+  - `--units` (e.g. `mm`, `cm`) lets you specify the displayed unit explicitly. Pass `--units ""` to show no unit
+- `Format` buttons (SVG/PNG/DXF/CSV) to choose the save format. The selected format is highlighted and reflected in the Save buttons' labels
+- `Save Current Slice` button to save the currently displayed cross-section
+- `Save All Slices Along <axis>-Axis` button to save every cross-section in one go using the current axis/thickness settings (positions with no intersection are skipped automatically)
+- Both save to `<same directory as the model>/slices_gui/`
 
-## ライブラリとして使う
+## Using it as a library
 
 ```python
 import slice3d
 
-# 一括処理: モデルを読み込んでスライスし、ディレクトリへ書き出す
+# Batch mode: load a model, slice it, and write it out to a directory
 written = slice3d.slice_file("model.stl", "out", axis="z", thickness=1.0, fmt="svg")
 
-# 細かく制御したい場合
+# For finer control
 mesh = slice3d.load_mesh("model.stl")
 for s in slice3d.iter_slices(mesh, axis="z", thickness=1.0):
     if s.is_empty:
@@ -93,31 +93,31 @@ for s in slice3d.iter_slices(mesh, axis="z", thickness=1.0):
 
 ### API
 
-- `slice3d.load_mesh(path)` — 3Dモデルを読み込み `trimesh.Trimesh` を返す
-- `slice3d.compute_heights(mesh, axis, thickness, start=None, end=None)` — スライス位置の配列を計算
-- `slice3d.iter_slices(mesh, axis="z", thickness=1.0, start=None, end=None)` — `Slice` を1枚ずつ生成するイテレータ
-- `slice3d.slice_mesh(...)` — `iter_slices` の結果をリストで取得
-- `slice3d.save_section(path_2d, outpath, fmt=None)` — 1枚の断面を保存(`fmt` 省略時は拡張子から推定)
-- `slice3d.print_volume(mesh)` — メッシュの体積を標準出力に表示し、その値を返す
-- `slice3d.slice_file(model_path, outdir, axis="z", thickness=1.0, start=None, end=None, fmt="svg")` — 読み込み〜保存までを一括実行
+- `slice3d.load_mesh(path)` — load a 3D model and return a `trimesh.Trimesh`
+- `slice3d.compute_heights(mesh, axis, thickness, start=None, end=None)` — compute the array of slice positions
+- `slice3d.iter_slices(mesh, axis="z", thickness=1.0, start=None, end=None)` — an iterator that yields `Slice` objects one at a time
+- `slice3d.slice_mesh(...)` — get the result of `iter_slices` as a list
+- `slice3d.save_section(path_2d, outpath, fmt=None)` — save a single cross-section (`fmt` is inferred from the extension if omitted)
+- `slice3d.print_volume(mesh)` — print the mesh's volume to stdout and return the value
+- `slice3d.slice_file(model_path, outdir, axis="z", thickness=1.0, start=None, end=None, fmt="svg")` — load, slice, and save in one call
 
-`Slice` は `index`, `axis`, `position`, `path_2d`(`trimesh.path.Path2D | None`), `is_empty` を持つデータクラスです。
+`Slice` is a dataclass with `index`, `axis`, `position`, `path_2d` (`trimesh.path.Path2D | None`), and `is_empty`.
 
-## サンプル
+## Example
 
 ```bash
 python examples/slice_ammonite.py
 ```
 
-`examples/ammonite.glb` をX軸方向にスライスし、`examples/output/` にPNGを出力します。
+Slices `examples/ammonite.glb` along the X axis and writes PNGs to `examples/output/`.
 
-## 開発
+## Development
 
 ```bash
 pip install -e ".[dev]"
 pytest
 ```
 
-## ライセンス
+## License
 
-MIT License. [LICENSE](LICENSE) を参照してください。
+MIT License. See [LICENSE](LICENSE).
